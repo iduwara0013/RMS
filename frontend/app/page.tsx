@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -11,6 +12,12 @@ type AuthenticatedUser = {
   employee_epf: string;
   roles: string[];
 };
+type LoginResponse = {
+  message?: string;
+  first_login?: boolean;
+  user?: AuthenticatedUser;
+};
+type ApiMessageResponse = { message?: string };
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000/api';
 
 export default function LoginPage() {
@@ -48,7 +55,7 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ identifier: employeeIdentifier, password }),
       });
-      const payload = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({})) as LoginResponse;
       if (!response.ok) throw new Error(payload.message ?? 'Unable to sign in.');
       setCurrentUser(payload.user ?? null);
       if (payload.user) sessionStorage.setItem('rms_user', JSON.stringify(payload.user));
@@ -93,7 +100,7 @@ export default function LoginPage() {
           password_confirmation: confirmPassword,
         }),
       });
-      const payload = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({})) as ApiMessageResponse;
       if (!response.ok) throw new Error(payload.message ?? 'Unable to change password.');
       router.push('/dashboard');
       setStatusMessage({ type: 'success', text: 'Password changed successfully.' });
@@ -128,7 +135,7 @@ export default function LoginPage() {
 
         <header className="brand-mark">
           <span className="brand-mark__logo-wrap">
-            <img className="brand-mark__logo" src="/cpstl-logo.png" alt="CPSTL logo" />
+            <Image className="brand-mark__logo" src="/cpstl-logo.png" alt="CPSTL logo" width={72} height={72} priority />
           </span>
           <span>
             <strong>Ceylon Petroleum Storage Terminals Limited</strong>
@@ -167,7 +174,7 @@ export default function LoginPage() {
       <section className="form-panel" aria-labelledby="form-heading-title">
         <div className={`form-shell ${screen === 'dashboard' ? 'form-shell--dashboard' : ''}`}>
           <div className="mobile-brand">
-            <img src="/cpstl-logo.png" alt="CPSTL logo" />
+            <Image src="/cpstl-logo.png" alt="CPSTL logo" width={48} height={48} priority />
             <span><strong>CPSTL</strong><small>Recruitment Management System</small></span>
           </div>
 
@@ -371,7 +378,7 @@ export default function LoginPage() {
           {screen === 'dashboard' && (
             <div className="app-wrapper rms-adminlte">
               <aside className="app-sidebar">
-                <a className="sidebar-brand" href="#dashboard"><img src="/cpstl-logo.png" alt="" /><span><strong>CPSTL RMS</strong><small>Recruitment portal</small></span></a>
+                <a className="sidebar-brand" href="#dashboard"><Image src="/cpstl-logo.png" alt="CPSTL logo" width={48} height={48} /><span><strong>CPSTL RMS</strong><small>Recruitment portal</small></span></a>
                 <div className="sidebar-wrapper"><nav aria-label="Dashboard navigation">
                   <div className="nav-header">Workspace</div>
                   <a className="nav-link active" href="#dashboard"><span className="nav-icon">⌂</span>Dashboard</a>

@@ -1,9 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import Image from 'next/image';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 
 type User = { name: string; roles: string[]; employee_epf: string; employee_pin: string };
+type DashboardSummary = { open_tasks: number; applications: number; system_status: string };
+
+function subscribeToSessionStorage(onStoreChange: () => void) {
+  window.addEventListener('storage', onStoreChange);
+  return () => window.removeEventListener('storage', onStoreChange);
+}
+
+function getStoredUser() {
+  return sessionStorage.getItem('rms_user');
+}
+
+function isDashboardSummary(value: unknown): value is DashboardSummary {
+  if (!value || typeof value !== 'object') return false;
+  const summary = value as Record<string, unknown>;
+  return typeof summary.open_tasks === 'number'
+    && typeof summary.applications === 'number'
+    && typeof summary.system_status === 'string';
+}
 
 const actionMap: Record<string, { icon: string; title: string; description: string }[]> = {
   'System Administrator': [
@@ -25,14 +44,43 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000/api';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [summary, setSummary] = useState({ open_tasks: 0, applications: 0, system_status: 'Online' });
+  const storedUser = useSyncExternalStore(subscribeToSessionStorage, getStoredUser, () => null);
+  const user = useMemo<User | null>(() => {
+    if (!storedUser) return null;
+    try {
+      return JSON.parse(storedUser) as User;
+    } catch {
+      return null;
+    }
+  }, [storedUser]);
+  const [summary, setSummary] = useState<DashboardSummary>({ open_tasks: 0, applications: 0, system_status: 'Online' });
 
   useEffect(() => {
-    const savedUser = sessionStorage.getItem('rms_user');
-    if (!savedUser) { router.replace('/'); return; }
-    try { const saved = JSON.parse(savedUser); setUser(saved); fetch(`${API}/dashboard/summary`, { headers: { 'X-User-Role': saved.roles?.[0] ?? '' } }).then((response) => response.ok ? response.json() : null).then((data) => { if (data) setSummary(data); }); } catch { router.replace('/'); }
-  }, [router]);
+    if (!user) {
+      router.replace('/');
+      return;
+    }
+
+    const controller = new AbortController();
+    async function loadSummary() {
+      try {
+        const response = await fetch(`${API}/dashboard/summary`, {
+          headers: { 'X-User-Role': user?.roles[0] ?? '' },
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const data: unknown = await response.json();
+        if (!controller.signal.aborted && isDashboardSummary(data)) setSummary(data);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          console.error('Unable to load dashboard summary.', error);
+        }
+      }
+    }
+
+    void loadSummary();
+    return () => controller.abort();
+  }, [router, user]);
 
   function signOut() { sessionStorage.removeItem('rms_user'); router.replace('/'); }
   const roles = user?.roles ?? [];
@@ -44,7 +92,7 @@ export default function DashboardPage() {
     <main className="dashboard-page">
       <div className="app-wrapper rms-adminlte">
         <aside className="app-sidebar">
-          <a className="sidebar-brand" href="/dashboard"><img src="/cpstl-logo.png" alt="" /><span><strong>CPSTL RMS</strong><small>Recruitment portal</small></span></a>
+          <a className="sidebar-brand" href="/dashboard"><Image src="/cpstl-logo.png" alt="CPSTL logo" width={48} height={48} priority /><span><strong>CPSTL RMS</strong><small>Recruitment portal</small></span></a>
           <div className="sidebar-wrapper"><nav aria-label="Dashboard navigation">
             <div className="nav-header">Workspace</div>
             <a className="nav-link active" href="/dashboard"><span className="nav-icon">⌂</span>Dashboard</a>
