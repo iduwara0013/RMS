@@ -1,0 +1,68 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+
+class AuthController extends Controller
+{
+    public function login(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'identifier' => ['required', 'string'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $user = User::with('roles')->where('employee_pin', $data['identifier'])
+            ->orWhere('employee_epf', $data['identifier'])
+            ->first();
+
+        if (!$user) {
+            return response()->json(['message' => 'Invalid Employee PIN/EPF or password.'], 401);
+        }
+
+        $temporaryPasswordMatches = $user->first_login && in_array(
+            $data['password'],
+            [$user->employee_pin, $user->employee_epf],
+            true
+        );
+
+        if (!$temporaryPasswordMatches && !Hash::check($data['password'], $user->password)) {
+            return response()->json(['message' => 'Invalid Employee PIN/EPF or password.'], 401);
+        }
+
+        return response()->json([
+            'message' => 'Login successful.',
+            'first_login' => (bool) $user->first_login,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'employee_pin' => $user->employee_pin,
+                'employee_epf' => $user->employee_epf,
+                'roles' => $user->roles->pluck('role_name')->values(),
+            ],
+        ]);
+    }
+
+    public function changePassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'identifier' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user = User::where('employee_pin', $data['identifier'])
+            ->orWhere('employee_epf', $data['identifier'])
+            ->firstOrFail();
+
+        $user->update([
+            'password' => Hash::make($data['password']),
+            'first_login' => false,
+        ]);
+
+        return response()->json(['message' => 'Password changed successfully.']);
+    }
+}
