@@ -1,23 +1,156 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
+import DashboardNavigation from '@/components/dashboard-navigation';
 
-type Vacancy = { vacancy_id: number; title: string; description: string; vacancy_type: string; opening_date: string; closing_date: string; status: string; rejection_reason?: string };
-type User = { name: string; roles: string[] };
+type User = { name: string; roles: string[]; department_id?: number | null; department_name?: string | null };
+type Department = { department_id: number; department_name: string };
+type Vacancy = {
+  vacancy_id: number; department_id: number; title: string; description: string; vacancy_type: string;
+  vacancy_grade: 'A' | 'B' | 'C'; audience: 'Internal' | 'External' | 'Both'; opening_date: string;
+  closing_date: string; status: string; rejection_reason?: string | null; department?: Department;
+};
+type ApiMessage = { message?: string };
+type VacancyCategory = 'ongoing' | 'published' | 'finished';
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000/api';
+const emptyForm = {
+  title: '', description: '', vacancy_type: 'Permanent', vacancy_grade: 'C' as const,
+  audience: 'External' as const, department_id: '', opening_date: '', closing_date: '',
+};
+
+function subscribeToSessionStorage(onStoreChange: () => void) {
+  window.addEventListener('storage', onStoreChange);
+  return () => window.removeEventListener('storage', onStoreChange);
+}
+function getStoredUser() { return sessionStorage.getItem('rms_user'); }
+const HYDRATING_SESSION = '__rms_session_hydrating__';
 
 export default function ManageVacanciesPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const storedUser = useSyncExternalStore(subscribeToSessionStorage, getStoredUser, () => HYDRATING_SESSION);
+  const user = useMemo<User | null | undefined>(() => {
+    if (storedUser === HYDRATING_SESSION) return undefined;
+    if (!storedUser) return null;
+    try { return JSON.parse(storedUser) as User; } catch { return null; }
+  }, [storedUser]);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [message, setMessage] = useState('');
-  const [form, setForm] = useState({ title: '', description: '', vacancy_type: 'Permanent', opening_date: '', closing_date: '' });
-  useEffect(() => { const raw = sessionStorage.getItem('rms_user'); if (!raw) { router.replace('/'); return; } const saved = JSON.parse(raw) as User; setUser(saved); loadVacancies(); }, [router]);
-  async function loadVacancies() { const response = await fetch(`${API}/vacancies/all`); if (response.ok) setVacancies((await response.json()).vacancies ?? []); }
-  async function action(id: number, operation: string, body: Record<string, string> = {}) { if (!user) return; const response = await fetch(`${API}/vacancies/${id}/${operation}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.roles[0] }, body: JSON.stringify(body) }); const payload = await response.json().catch(() => ({})); setMessage(response.ok ? payload.message : (payload.message ?? 'Action could not be completed.')); if (response.ok) loadVacancies(); }
-  async function create(event: FormEvent) { event.preventDefault(); if (!user) return; const response = await fetch(`${API}/vacancies`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': user.roles[0] }, body: JSON.stringify(form) }); const payload = await response.json().catch(() => ({})); setMessage(response.ok ? 'Draft vacancy created.' : (payload.message ?? 'Unable to create vacancy.')); if (response.ok) { setForm({ title: '', description: '', vacancy_type: 'Permanent', opening_date: '', closing_date: '' }); loadVacancies(); } }
-  const role = user?.roles[0];
+  const [form, setForm] = useState(emptyForm);
+  const [category, setCategory] = useState<VacancyCategory>('ongoing');
+  const role = user?.roles[0] ?? '';
   const roles = user?.roles ?? [];
-  return <main className="dashboard-page"><div className="app-wrapper rms-adminlte"><aside className="app-sidebar"><a className="sidebar-brand" href="/dashboard"><img src="/cpstl-logo.png" alt="" /><span><strong>CPSTL RMS</strong><small>Recruitment portal</small></span></a><div className="sidebar-wrapper"><nav><div className="nav-header">Workspace</div><a className="nav-link" href="/dashboard"><span className="nav-icon">⌂</span>Dashboard</a><a className="nav-link active" href="/dashboard/vacancies"><span className="nav-icon">＋</span>{role === 'HR Manager' ? 'Vacancies' : 'Approvals'}</a>{roles.some((item) => ['HR Manager', 'Data Entry Operator'].includes(item)) && <a className="nav-link" href="/dashboard/applications"><span className="nav-icon">◌</span>Applications</a>}<a className="nav-link" href="/vacancies"><span className="nav-icon">↗</span>Public careers</a><div className="nav-header">Account</div><a className="nav-link" href="#profile"><span className="nav-icon">◉</span>My profile</a></nav></div></aside><section className="app-main"><header className="app-header"><span className="app-header__title">Vacancy approval workflow</span><span className="app-header__meta">{user?.name}<button className="dashboard-signout" type="button" onClick={() => { sessionStorage.removeItem('rms_user'); router.replace('/'); }}>Sign out</button></span></header><div className="content-wrapper"><div className="content-header"><div><h2>Vacancies</h2><p>Move every vacancy through review, approval, and publication.</p></div><div className="role-badge"><span className="role-badge__dot" />{role}</div></div>{message && <p className="form-message form-message--success">{message}</p>}{role === 'HR Manager' && <form className="workflow-create-form" onSubmit={create}><h3>Create vacancy draft</h3><div className="workflow-form-grid"><input required placeholder="Vacancy title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /><input required placeholder="Vacancy type" value={form.vacancy_type} onChange={(e) => setForm({ ...form, vacancy_type: e.target.value })} /><input required type="date" value={form.opening_date} onChange={(e) => setForm({ ...form, opening_date: e.target.value })} /><input required type="date" value={form.closing_date} onChange={(e) => setForm({ ...form, closing_date: e.target.value })} /><textarea required placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div><button className="submit-button workflow-submit" type="submit"><span>Save draft</span><span>→</span></button></form>}<div className="workflow-list">{vacancies.map((vacancy) => <article className="workflow-row" key={vacancy.vacancy_id}><div><span className={`workflow-status workflow-status--${vacancy.status.toLowerCase().replaceAll(' ', '-')}`}>{vacancy.status}</span><h3>{vacancy.title}</h3><p>{vacancy.description}</p><small>Open {vacancy.opening_date} · Close {vacancy.closing_date}</small></div><div className="workflow-actions">{role === 'HR Manager' && ['Draft', 'Rejected'].includes(vacancy.status) && <button onClick={() => action(vacancy.vacancy_id, 'submit')}>Submit to HOD</button>}{role === 'Head of Department' && vacancy.status === 'Pending HOD Approval' && <><button onClick={() => action(vacancy.vacancy_id, 'hod-approve')}>Approve</button><button onClick={() => action(vacancy.vacancy_id, 'reject', { rejection_reason: 'Please revise the vacancy details.' })}>Send back</button></>}{role === 'Managing Director' && vacancy.status === 'Pending MD Approval' && <><button onClick={() => action(vacancy.vacancy_id, 'md-approve')}>Final approve</button><button onClick={() => action(vacancy.vacancy_id, 'reject', { rejection_reason: 'Please revise the vacancy details.' })}>Reject</button></>}{role === 'HR Manager' && vacancy.status === 'Approved' && <button onClick={() => action(vacancy.vacancy_id, 'publish')}>Publish</button>}</div></article>)}</div></div></section></div></main>;
+  const categorizedVacancies = useMemo<Record<VacancyCategory, Vacancy[]>>(() => ({
+    ongoing: vacancies.filter((vacancy) => !['Published', 'Closed'].includes(vacancy.status)),
+    published: vacancies.filter((vacancy) => vacancy.status === 'Published'),
+    finished: vacancies.filter((vacancy) => vacancy.status === 'Closed'),
+  }), [vacancies]);
+  const visibleVacancies = categorizedVacancies[category];
+  const emptyCategoryMessage: Record<VacancyCategory, string> = {
+    ongoing: 'No vacancies are currently moving through the approval workflow.',
+    published: 'No vacancies are currently published.',
+    finished: 'No recruitment vacancies have been completed yet.',
+  };
+
+  async function refreshVacancies(activeUser: User) {
+    const response = await fetch(`${API}/vacancies/all`, { headers: {
+      'X-User-Role': activeUser.roles[0] ?? '',
+      'X-User-Department-Id': String(activeUser.department_id ?? ''),
+    } });
+    const payload = await response.json().catch(() => ({})) as { vacancies?: Vacancy[]; message?: string };
+    if (response.ok) setVacancies(payload.vacancies ?? []);
+    else setMessage(payload.message ?? 'Unable to load vacancies.');
+  }
+
+  useEffect(() => {
+    if (user === undefined) return;
+    if (user === null) { router.replace('/'); return; }
+    const controller = new AbortController();
+    fetch(`${API}/vacancies/all`, {
+      headers: {
+        'X-User-Role': user.roles[0] ?? '',
+        'X-User-Department-Id': String(user.department_id ?? ''),
+      },
+      signal: controller.signal,
+    })
+      .then(async (response) => ({ response, payload: await response.json() as { vacancies?: Vacancy[]; message?: string } }))
+      .then(({ response, payload }) => {
+        if (response.ok) setVacancies(payload.vacancies ?? []);
+        else setMessage(payload.message ?? 'Unable to load vacancies.');
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) setMessage('Unable to load vacancies.');
+      });
+    if (user.roles.includes('HR Manager')) {
+      fetch(`${API}/departments`, { signal: controller.signal })
+        .then(async (response) => ({ response, payload: await response.json() as { departments?: Department[] } }))
+        .then(({ response, payload }) => { if (response.ok) setDepartments(payload.departments ?? []); })
+        .catch((error: unknown) => {
+          if (!(error instanceof DOMException && error.name === 'AbortError')) setMessage('Unable to load departments.');
+        });
+    }
+    return () => controller.abort();
+  }, [router, user]);
+
+  async function action(id: number, operation: string, body: Record<string, string> = {}) {
+    if (!user) return;
+    const response = await fetch(`${API}/vacancies/${id}/${operation}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Role': role, 'X-User-Department-Id': String(user.department_id ?? '') },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => ({})) as ApiMessage;
+    setMessage(response.ok ? (payload.message ?? 'Action completed.') : (payload.message ?? 'Action could not be completed.'));
+    if (response.ok) await refreshVacancies(user);
+  }
+
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user) return;
+    const response = await fetch(`${API}/vacancies`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Role': role },
+      body: JSON.stringify({ ...form, department_id: Number(form.department_id) }),
+    });
+    const payload = await response.json().catch(() => ({})) as ApiMessage;
+    setMessage(response.ok ? 'Draft vacancy created.' : (payload.message ?? 'Unable to create vacancy.'));
+    if (response.ok) { setForm(emptyForm); await refreshVacancies(user); }
+  }
+
+  if (!user) return <main className="dashboard-loading">Loading vacancies…</main>;
+
+  return <main className="dashboard-page"><div className="app-wrapper rms-adminlte">
+    <DashboardNavigation roles={roles} />
+    <section className="app-main"><header className="app-header"><span className="app-header__title">Vacancy approval workflow</span><span className="app-header__meta">{user.name}<button className="dashboard-signout" type="button" onClick={() => { sessionStorage.removeItem('rms_user'); router.replace('/'); }}>Sign out</button></span></header><div className="content-wrapper">
+      <div className="content-header"><div><h2>Vacancies</h2><p>Approval steps are selected automatically from the vacancy grade.</p></div><div className="role-badge"><span className="role-badge__dot" />{role}{user.department_name ? ` · ${user.department_name}` : ''}</div></div>{message && <p className="form-message form-message--success">{message}</p>}
+      {role === 'HR Manager' && <form className="workflow-create-form" onSubmit={create}><h3>Create vacancy draft</h3><div className="workflow-form-grid">
+        <input required placeholder="Vacancy title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+        <select required aria-label="Department" value={form.department_id} onChange={(event) => setForm({ ...form, department_id: event.target.value })}><option value="">Select department</option>{departments.map((department) => <option key={department.department_id} value={department.department_id}>{department.department_name}</option>)}</select>
+        <select aria-label="Vacancy grade" value={form.vacancy_grade} onChange={(event) => setForm({ ...form, vacancy_grade: event.target.value as 'A' | 'B' | 'C' })}><option value="A">Grade A — HR, HOD and MD approval</option><option value="B">Grade B — HR and HOD approval</option><option value="C">Grade C — HR and HOD approval</option></select>
+        <select aria-label="Candidate audience" value={form.audience} onChange={(event) => setForm({ ...form, audience: event.target.value as 'Internal' | 'External' | 'Both' })}><option value="Internal">Internal candidates only</option><option value="External">External candidates only</option><option value="Both">Internal and external candidates</option></select>
+        <input required placeholder="Vacancy type" value={form.vacancy_type} onChange={(event) => setForm({ ...form, vacancy_type: event.target.value })} /><input required type="date" aria-label="Opening date" value={form.opening_date} onChange={(event) => setForm({ ...form, opening_date: event.target.value })} /><input required type="date" aria-label="Closing date" value={form.closing_date} onChange={(event) => setForm({ ...form, closing_date: event.target.value })} /><textarea required placeholder="Description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+      </div><button className="submit-button workflow-submit" type="submit"><span>Save draft</span><span>→</span></button></form>}
+      <div className="vacancy-category-tabs" role="tablist" aria-label="Vacancy categories">
+        {([
+          ['ongoing', 'Ongoing'],
+          ['published', 'Published'],
+          ['finished', 'Finished'],
+        ] as const).map(([value, label]) => <button
+          key={value}
+          type="button"
+          role="tab"
+          aria-selected={category === value}
+          className={`vacancy-category-tab${category === value ? ' active' : ''}`}
+          onClick={() => setCategory(value)}
+        ><span>{label}</span><strong>{categorizedVacancies[value].length}</strong></button>)}
+      </div>
+      <div className="workflow-list" role="tabpanel">{visibleVacancies.map((vacancy) => <article className="workflow-row" key={vacancy.vacancy_id}><div><span className={`workflow-status workflow-status--${vacancy.status.toLowerCase().replaceAll(' ', '-')}`}>{vacancy.status}</span><h3>{vacancy.title}</h3><p>{vacancy.description}</p><small>{vacancy.department?.department_name ?? 'Unassigned department'} · Grade {vacancy.vacancy_grade} · {vacancy.audience} · {vacancy.vacancy_grade === 'A' ? 'HR → HOD → MD' : 'HR → HOD'} · Open {vacancy.opening_date} · Close {vacancy.closing_date}</small>{vacancy.rejection_reason && <p className="workflow-rejection">Returned: {vacancy.rejection_reason}</p>}</div><div className="workflow-actions">
+        {role === 'HR Manager' && ['Draft', 'Rejected'].includes(vacancy.status) && <button type="button" onClick={() => action(vacancy.vacancy_id, 'submit')}>HR approve &amp; send to HOD</button>}
+        {role === 'Head of Department' && vacancy.status === 'Pending HOD Approval' && <><button type="button" onClick={() => action(vacancy.vacancy_id, 'hod-approve')}>{vacancy.vacancy_grade === 'A' ? 'Approve & send to MD' : 'Approve'}</button><button type="button" onClick={() => action(vacancy.vacancy_id, 'reject', { rejection_reason: 'Please revise the vacancy details.' })}>Send back</button></>}
+        {role === 'Managing Director' && vacancy.vacancy_grade === 'A' && vacancy.status === 'Pending MD Approval' && <><button type="button" onClick={() => action(vacancy.vacancy_id, 'md-approve')}>Final approve</button><button type="button" onClick={() => action(vacancy.vacancy_id, 'reject', { rejection_reason: 'Please revise the vacancy details.' })}>Reject</button></>}
+        {role === 'HR Manager' && vacancy.status === 'Approved' && <button type="button" onClick={() => action(vacancy.vacancy_id, 'publish')}>Publish</button>}
+      </div></article>)}{visibleVacancies.length === 0 && <div className="vacancy-empty">{emptyCategoryMessage[category]}</div>}</div>
+    </div></section>
+  </div></main>;
 }

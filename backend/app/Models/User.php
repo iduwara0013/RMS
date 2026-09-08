@@ -27,9 +27,16 @@ class User extends Authenticatable
         'employee_pin',
         'employee_epf',
         'email',
+        'phone',
+        'department_id',
         'password',
         'first_login',
     ];
+
+    public function department()
+    {
+        return $this->belongsTo(Department::class, 'department_id', 'department_id');
+    }
 
     /**
      * The attributes that should be hidden for serialization.

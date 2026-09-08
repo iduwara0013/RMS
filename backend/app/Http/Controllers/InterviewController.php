@@ -10,20 +10,57 @@ use Illuminate\Support\Facades\DB;
 
 class InterviewController extends Controller
 {
-    public function index(): JsonResponse { return response()->json(['interviews' => Interview::with(['application.candidate', 'application.vacancy'])->latest('interview_date')->get()]); }
+    public function index(): JsonResponse { return response()->json(['interviews' => Interview::with(['application.candidate', 'application.vacancy.department'])->latest('interview_date')->get()]); }
 
     public function store(Request $request): JsonResponse
     {
         abort_unless($request->header('X-User-Role') === 'HR Manager', 403, 'Only HR Manager can schedule interviews.');
-        $data = $request->validate(['application_id' => ['required', 'integer'], 'interview_date' => ['required', 'date'], 'interview_time' => ['required'], 'location' => ['required', 'string', 'max:255']]);
-        $application = Application::findOrFail($data['application_id']);
-        abort_unless($application->status === 'Shortlisted', 422, 'Only shortlisted candidates can be scheduled.');
-        $interview = DB::transaction(function () use ($data, $application) {
-            $interview = Interview::create($data + ['status' => 'Scheduled']);
-            $application->update(['status' => 'Interview Scheduled']);
-            return $interview;
+        if ($request->filled('application_id') && ! $request->has('application_ids')) {
+            $request->merge(['application_ids' => [(int) $request->input('application_id')]]);
+        }
+
+        $data = $request->validate([
+            'application_ids' => ['required', 'array', 'min:1'],
+            'application_ids.*' => ['required', 'integer', 'distinct', 'exists:applications,application_id'],
+            'interview_date' => ['required', 'date'],
+            'interview_time' => ['required'],
+            'location' => ['required', 'string', 'max:255'],
+        ]);
+
+        $applications = Application::query()
+            ->whereIn('application_id', $data['application_ids'])
+            ->get();
+        abort_if(
+            $applications->contains(fn (Application $application) => $application->status !== 'Shortlisted'),
+            422,
+            'Every selected candidate must still be shortlisted.'
+        );
+        abort_if(
+            Interview::query()->whereIn('application_id', $data['application_ids'])->exists(),
+            422,
+            'One or more selected candidates already have an interview.'
+        );
+
+        $interviews = DB::transaction(function () use ($data, $applications) {
+            return $applications->map(function (Application $application) use ($data) {
+                $interview = Interview::create([
+                    'application_id' => $application->application_id,
+                    'interview_date' => $data['interview_date'],
+                    'interview_time' => $data['interview_time'],
+                    'location' => $data['location'],
+                    'status' => 'Scheduled',
+                ]);
+                $application->update(['status' => 'Interview Scheduled']);
+
+                return $interview;
+            });
         });
-        return response()->json(['message' => 'Interview scheduled successfully.', 'interview' => $interview], 201);
+
+        $count = $interviews->count();
+        return response()->json([
+            'message' => $count === 1 ? 'Interview scheduled successfully.' : "$count interviews scheduled successfully.",
+            'interviews' => $interviews,
+        ], 201);
     }
 
     public function evaluate(Request $request, Interview $interview): JsonResponse

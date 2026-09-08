@@ -13,13 +13,18 @@ class ApplicationController extends Controller
 {
     public function store(Request $request, Vacancy $vacancy): JsonResponse
     {
-        abort_unless($vacancy->status === 'Published' && $vacancy->closing_date->isFuture(), 422, 'This vacancy is no longer accepting applications.');
+        $acceptingApplications = $vacancy->status === 'Published'
+            && in_array($vacancy->audience, ['External', 'Both'], true)
+            && $vacancy->opening_date->startOfDay()->lte(today())
+            && $vacancy->closing_date->endOfDay()->gte(now());
+
+        abort_unless($acceptingApplications, 422, 'This vacancy is not yet open or is no longer accepting applications.');
         $data = $request->validate(['nic' => ['required', 'string', 'max:30'], 'name' => ['required', 'string', 'max:255'], 'email' => ['required', 'email', 'max:255'], 'phone' => ['required', 'string', 'max:30'], 'address' => ['required', 'string', 'max:500'], 'cv' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:5120']]);
         $candidate = Candidate::where('nic', $data['nic'])->first();
         abort_if($candidate && Application::where('vacancy_id', $vacancy->vacancy_id)->where('candidate_id', $candidate->candidate_id)->exists(), 422, 'An application already exists for this candidate and vacancy.');
         $application = DB::transaction(function () use ($data, $vacancy, $request) {
             $candidate = Candidate::updateOrCreate(['nic' => $data['nic']], collect($data)->only(['nic', 'name', 'email', 'phone', 'address'])->all());
-            $application = Application::create(['candidate_id' => $candidate->candidate_id, 'vacancy_id' => $vacancy->vacancy_id, 'submitted_at' => now(), 'status' => 'Submitted']);
+            $application = Application::create(['candidate_id' => $candidate->candidate_id, 'vacancy_id' => $vacancy->vacancy_id, 'applicant_type' => 'External', 'submitted_at' => now(), 'status' => 'Submitted']);
             $path = $request->file('cv')->store('candidate-documents', 'public');
             DB::table('documents')->insert(['application_id' => $application->application_id, 'document_type' => 'CV', 'file_name' => $request->file('cv')->getClientOriginalName(), 'file_path' => $path, 'uploaded_at' => now()]);
             return $application;
@@ -29,9 +34,25 @@ class ApplicationController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Application::with(['candidate', 'vacancy'])->latest('submitted_at');
+        $query = Application::with(['candidate', 'vacancy.department'])->latest('submitted_at');
         if ($request->filled('status')) $query->where('status', $request->string('status'));
         return response()->json(['applications' => $query->get()]);
+    }
+
+    public function completed(Request $request): JsonResponse
+    {
+        abort_unless(
+            in_array($request->header('X-User-Role'), ['HR Manager', 'System Administrator', 'Managing Director'], true),
+            403,
+            'You are not allowed to view completed candidate records.'
+        );
+
+        $applications = Application::with(['candidate', 'vacancy.department'])
+            ->whereIn('status', ['Selected', 'Not Selected'])
+            ->latest('updated_at')
+            ->get();
+
+        return response()->json(['candidates' => $applications]);
     }
 
     public function updateStatus(Request $request, Application $application): JsonResponse

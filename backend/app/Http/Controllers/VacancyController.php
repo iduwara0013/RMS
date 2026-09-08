@@ -11,8 +11,9 @@ class VacancyController extends Controller
     public function published(): JsonResponse
     {
         $vacancies = Vacancy::query()
+            ->with('department')
             ->where('status', 'Published')
-            ->whereDate('opening_date', '<=', now())
+            ->whereIn('audience', ['External', 'Both'])
             ->whereDate('closing_date', '>=', now())
             ->orderBy('closing_date')
             ->get();
@@ -22,13 +23,21 @@ class VacancyController extends Controller
 
     public function showPublic(Vacancy $vacancy): JsonResponse
     {
-        abort_unless($vacancy->status === 'Published', 404);
-        return response()->json(['vacancy' => $vacancy]);
+        abort_unless($vacancy->status === 'Published' && in_array($vacancy->audience, ['External', 'Both'], true), 404);
+        return response()->json(['vacancy' => $vacancy->load('department')]);
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return response()->json(['vacancies' => Vacancy::latest()->get()]);
+        $query = Vacancy::query()->with('department')->latest();
+
+        if ($request->header('X-User-Role') === 'Head of Department') {
+            $departmentId = (int) $request->header('X-User-Department-Id');
+            abort_unless($departmentId > 0, 403, 'Your user account is not assigned to a department.');
+            $query->where('department_id', $departmentId);
+        }
+
+        return response()->json(['vacancies' => $query->get()]);
     }
 
     public function store(Request $request): JsonResponse
@@ -38,9 +47,11 @@ class VacancyController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string'],
             'vacancy_type' => ['required', 'string', 'max:80'],
+            'vacancy_grade' => ['required', 'in:A,B,C'],
+            'audience' => ['required', 'in:Internal,External,Both'],
             'opening_date' => ['required', 'date'],
             'closing_date' => ['required', 'date', 'after_or_equal:opening_date'],
-            'department_id' => ['nullable', 'integer'],
+            'department_id' => ['required', 'integer', 'exists:Department,department_id'],
         ]);
         $vacancy = Vacancy::create($data + ['status' => 'Draft']);
         return response()->json(['vacancy' => $vacancy], 201);
@@ -50,30 +61,58 @@ class VacancyController extends Controller
     {
         abort_unless($request->header('X-User-Role') === 'HR Manager', 403);
         abort_unless($vacancy->status === 'Draft' || $vacancy->status === 'Rejected', 422, 'Only draft vacancies can be submitted.');
-        $vacancy->update(['status' => 'Pending HOD Approval', 'rejection_reason' => null]);
-        return response()->json(['message' => 'Vacancy submitted to Head of Department.', 'vacancy' => $vacancy->fresh()]);
+        $vacancy->update([
+            'status' => 'Pending HOD Approval',
+            'hr_approved_at' => now(),
+            'hod_approved_at' => null,
+            'md_approved_at' => null,
+            'rejection_reason' => null,
+        ]);
+        return response()->json(['message' => 'HR approved the vacancy and submitted it to the department HOD.', 'vacancy' => $vacancy->fresh('department')]);
     }
 
     public function hodApprove(Request $request, Vacancy $vacancy): JsonResponse
     {
         abort_unless($request->header('X-User-Role') === 'Head of Department', 403);
         abort_unless($vacancy->status === 'Pending HOD Approval', 422, 'Vacancy is not awaiting HOD approval.');
-        $vacancy->update(['status' => 'Pending MD Approval', 'hod_approved_at' => now()]);
-        return response()->json(['message' => 'Vacancy sent for Managing Director approval.', 'vacancy' => $vacancy->fresh()]);
+        $departmentId = (int) $request->header('X-User-Department-Id');
+        abort_unless($departmentId > 0 && $departmentId === (int) $vacancy->department_id, 403, 'Only the HOD of the selected department can approve this vacancy.');
+
+        $requiresMdApproval = $vacancy->vacancy_grade === 'A';
+        $vacancy->update([
+            'status' => $requiresMdApproval ? 'Pending MD Approval' : 'Approved',
+            'hod_approved_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => $requiresMdApproval
+                ? 'Grade A vacancy sent to the Managing Director for final approval.'
+                : "Grade {$vacancy->vacancy_grade} vacancy approved. HR can now publish it.",
+            'vacancy' => $vacancy->fresh('department'),
+        ]);
     }
 
     public function mdApprove(Request $request, Vacancy $vacancy): JsonResponse
     {
         abort_unless($request->header('X-User-Role') === 'Managing Director', 403);
         abort_unless($vacancy->status === 'Pending MD Approval', 422, 'Vacancy is not awaiting final approval.');
+        abort_unless($vacancy->vacancy_grade === 'A', 422, 'Managing Director approval is only required for Grade A vacancies.');
         $vacancy->update(['status' => 'Approved', 'md_approved_at' => now()]);
         return response()->json(['message' => 'Vacancy finally approved. HR can now publish it.', 'vacancy' => $vacancy->fresh()]);
     }
 
     public function reject(Request $request, Vacancy $vacancy): JsonResponse
     {
-        abort_unless(in_array($request->header('X-User-Role'), ['Head of Department', 'Managing Director'], true), 403);
+        $role = $request->header('X-User-Role');
+        abort_unless(in_array($role, ['Head of Department', 'Managing Director'], true), 403);
         abort_unless(in_array($vacancy->status, ['Pending HOD Approval', 'Pending MD Approval'], true), 422, 'Vacancy cannot be rejected at this stage.');
+        if ($role === 'Head of Department') {
+            $departmentId = (int) $request->header('X-User-Department-Id');
+            abort_unless($vacancy->status === 'Pending HOD Approval' && $departmentId > 0 && $departmentId === (int) $vacancy->department_id, 403, 'Only the HOD of the selected department can send back this vacancy.');
+        }
+        if ($role === 'Managing Director') {
+            abort_unless($vacancy->vacancy_grade === 'A' && $vacancy->status === 'Pending MD Approval', 403, 'This vacancy does not require Managing Director approval.');
+        }
         $data = $request->validate(['rejection_reason' => ['required', 'string', 'max:1000']]);
         $vacancy->update(['status' => 'Rejected', 'rejection_reason' => $data['rejection_reason']]);
         return response()->json(['message' => 'Vacancy sent back for changes.', 'vacancy' => $vacancy->fresh()]);

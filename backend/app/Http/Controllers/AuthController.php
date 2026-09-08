@@ -16,7 +16,7 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $user = User::with('roles')->where('employee_pin', $data['identifier'])
+        $user = User::with(['roles', 'department'])->where('employee_pin', $data['identifier'])
             ->orWhere('employee_epf', $data['identifier'])
             ->first();
 
@@ -42,6 +42,8 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'employee_pin' => $user->employee_pin,
                 'employee_epf' => $user->employee_epf,
+                'department_id' => $user->department_id,
+                'department_name' => $user->department?->department_name,
                 'roles' => $user->roles->pluck('role_name')->values(),
             ],
         ]);

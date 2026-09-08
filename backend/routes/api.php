@@ -6,15 +6,28 @@ use App\Http\Controllers\ApplicationController;
 use App\Http\Controllers\InterviewController;
 use App\Http\Controllers\SelectionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\InternalEmployeeController;
 use Illuminate\Support\Facades\Route;
+
+// Prevent static endpoints such as /vacancies/all from being captured by
+// implicit vacancy model binding.
+Route::pattern('vacancy', '[0-9]+');
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/change-password', [AuthController::class, 'changePassword']);
 Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+Route::get('/departments', [DepartmentController::class, 'index']);
+Route::post('/internal-auth/request-otp', [InternalEmployeeController::class, 'requestOtp']);
+Route::post('/internal-auth/verify-otp', [InternalEmployeeController::class, 'verifyOtp']);
+Route::post('/internal-auth/logout', [InternalEmployeeController::class, 'logout']);
+Route::get('/internal/vacancies', [InternalEmployeeController::class, 'vacancies']);
+Route::post('/internal/vacancies/{vacancy}/apply', [InternalEmployeeController::class, 'apply']);
 Route::get('/vacancies', [VacancyController::class, 'published']);
 Route::get('/vacancies/{vacancy}', [VacancyController::class, 'showPublic']);
 Route::post('/vacancies/{vacancy}/applications', [ApplicationController::class, 'store']);
 Route::get('/applications', [ApplicationController::class, 'index']);
+Route::get('/applications/completed', [ApplicationController::class, 'completed']);
 Route::post('/applications/{application}/status', [ApplicationController::class, 'updateStatus']);
 Route::get('/interviews', [InterviewController::class, 'index']);
 Route::post('/interviews', [InterviewController::class, 'store']);

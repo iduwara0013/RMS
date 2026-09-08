@@ -12,11 +12,17 @@ class Vacancy extends Model
 
     protected $fillable = [
         'department_id', 'title', 'description', 'vacancy_type',
-        'opening_date', 'closing_date', 'status',
+        'vacancy_grade', 'audience', 'opening_date', 'closing_date', 'status',
+        'hr_approved_at', 'hod_approved_at', 'md_approved_at', 'rejection_reason',
     ];
+
+    public function department()
+    {
+        return $this->belongsTo(Department::class, 'department_id', 'department_id');
+    }
 
     protected function casts(): array
     {
-        return ['opening_date' => 'date', 'closing_date' => 'date', 'hod_approved_at' => 'datetime', 'md_approved_at' => 'datetime'];
+        return ['opening_date' => 'date', 'closing_date' => 'date', 'hr_approved_at' => 'datetime', 'hod_approved_at' => 'datetime', 'md_approved_at' => 'datetime'];
     }
 }

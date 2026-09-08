@@ -4,12 +4,14 @@ import Image from 'next/image';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type ScreenState = 'login' | 'first-time-setup' | 'dashboard';
+type ScreenState = 'login' | 'first-time-setup';
 type AuthenticatedUser = {
   id: number;
   name: string;
   employee_pin: string;
   employee_epf: string;
+  department_id: number | null;
+  department_name: string | null;
   roles: string[];
 };
 type LoginResponse = {
@@ -23,7 +25,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000/a
 export default function LoginPage() {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>('login');
-  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
   
   // Login credentials
   const [employeeIdentifier, setEmployeeIdentifier] = useState('');
@@ -57,7 +58,6 @@ export default function LoginPage() {
       });
       const payload = await response.json().catch(() => ({})) as LoginResponse;
       if (!response.ok) throw new Error(payload.message ?? 'Unable to sign in.');
-      setCurrentUser(payload.user ?? null);
       if (payload.user) sessionStorage.setItem('rms_user', JSON.stringify(payload.user));
       if (payload.first_login) setScreen('first-time-setup');
       else router.push('/dashboard');
@@ -117,7 +117,6 @@ export default function LoginPage() {
     setNewPassword('');
     setConfirmPassword('');
     setStatusMessage(null);
-    setCurrentUser(null);
     sessionStorage.removeItem('rms_user');
     router.push('/');
   }
@@ -172,7 +171,7 @@ export default function LoginPage() {
       </section>
 
       <section className="form-panel" aria-labelledby="form-heading-title">
-        <div className={`form-shell ${screen === 'dashboard' ? 'form-shell--dashboard' : ''}`}>
+        <div className="form-shell">
           <div className="mobile-brand">
             <Image src="/cpstl-logo.png" alt="CPSTL logo" width={48} height={48} priority />
             <span><strong>CPSTL</strong><small>Recruitment Management System</small></span>
@@ -246,7 +245,7 @@ export default function LoginPage() {
                     <input type="checkbox" name="remember" />
                     <span>Remember me</span>
                   </label>
-                  <a href="#forgot-password">Forgot password?</a>
+                  <span className="field__helper">Contact the system administrator for password recovery.</span>
                 </div>
 
                 <button className="submit-button" type="submit" disabled={isSubmitting}>
@@ -372,57 +371,6 @@ export default function LoginPage() {
                 </button>
               </form>
             </>
-          )}
-
-          {/* SCREEN 3: AUTHENTICATED PORTAL DASHBOARD */}
-          {screen === 'dashboard' && (
-            <div className="app-wrapper rms-adminlte">
-              <aside className="app-sidebar">
-                <a className="sidebar-brand" href="#dashboard"><Image src="/cpstl-logo.png" alt="CPSTL logo" width={48} height={48} /><span><strong>CPSTL RMS</strong><small>Recruitment portal</small></span></a>
-                <div className="sidebar-wrapper"><nav aria-label="Dashboard navigation">
-                  <div className="nav-header">Workspace</div>
-                  <a className="nav-link active" href="#dashboard"><span className="nav-icon">⌂</span>Dashboard</a>
-                  {(currentUser?.roles ?? []).some((role) => ['HR Manager', 'System Administrator'].includes(role)) && <a className="nav-link" href="#vacancies"><span className="nav-icon">＋</span>Vacancies</a>}
-                  {(currentUser?.roles ?? []).some((role) => ['HR Manager', 'Data Entry Operator'].includes(role)) && <a className="nav-link" href="#applications"><span className="nav-icon">◌</span>Applications</a>}
-                  {(currentUser?.roles ?? []).some((role) => ['Head of Department', 'Managing Director'].includes(role)) && <a className="nav-link" href="#approvals"><span className="nav-icon">✓</span>Approvals</a>}
-                  {(currentUser?.roles ?? []).includes('Interview Panel Member') && <a className="nav-link" href="#interviews"><span className="nav-icon">▤</span>Interviews</a>}
-                  <div className="nav-header">Account</div><a className="nav-link" href="#profile"><span className="nav-icon">◉</span>My profile</a>
-                </nav></div>
-              </aside>
-              <section className="app-main">
-                <header className="app-header"><span className="app-header__title">Recruitment Management System</span><span className="app-header__meta"><span className="app-header__avatar">{(currentUser?.name ?? 'U').charAt(0)}</span>{currentUser?.name ?? employeeIdentifier}</span></header>
-                <div className="content-wrapper">
-                  <div className="content-header"><div><h2>Dashboard</h2><p>Welcome back. Here is your recruitment workspace overview.</p></div><div className="role-badge"><span className="role-badge__dot" />{currentUser?.roles?.join(' · ') || 'Staff'}</div></div>
-                  <div className="small-boxes"><div className="small-box small-box--red"><strong>{currentUser?.roles?.[0] === 'Managing Director' ? '3' : '8'}</strong><span>Open tasks</span><small>Awaiting your action</small></div><div className="small-box small-box--navy"><strong>24</strong><span>Applications</span><small>Across active vacancies</small></div><div className="small-box small-box--green"><strong>Online</strong><span>System status</span><small>All services operational</small></div></div>
-                  <div className="dashboard-panel"><h3>Role-based actions</h3><p className="dashboard-panel__hint">Choose an operation available to your assigned designation.</p><div className="dashboard-actions">
-                {(currentUser?.roles ?? []).flatMap((role) => {
-                  const actions: Record<string, { icon: string; title: string; description: string }[]> = {
-                    'System Administrator': [
-                      { icon: '◎', title: 'Manage users', description: 'Create staff accounts and assign access.' },
-                      { icon: '◇', title: 'Manage roles', description: 'Review roles and permissions.' },
-                      { icon: '▦', title: 'Manage departments', description: 'Maintain department records.' },
-                    ],
-                    'HR Manager': [
-                      { icon: '＋', title: 'Manage vacancies', description: 'Create and publish recruitment vacancies.' },
-                      { icon: '◌', title: 'Review applications', description: 'Verify candidate submissions.' },
-                      { icon: '★', title: 'Shortlist candidates', description: 'Prepare candidates for interviews.' },
-                    ],
-                    'Head of Department': [{ icon: '✓', title: 'Review vacancies', description: 'Review and approve department requests.' }],
-                    'Managing Director': [{ icon: '◆', title: 'Final approvals', description: 'Approve or reject recruitment workflows.' }],
-                    'Data Entry Operator': [{ icon: '✎', title: 'Enter candidate data', description: 'Capture applications and supporting documents.' }],
-                    'Interview Panel Member': [{ icon: '▤', title: 'Evaluate interviews', description: 'Record scores and interview recommendations.' }],
-                  };
-                  return actions[role] ?? [];
-                }).map((action) => (
-                  <button className="dashboard-action" type="button" key={action.title}>
-                    <span className="dashboard-action__icon">{action.icon}</span><span><strong>{action.title}</strong><small>{action.description}</small></span><span className="dashboard-action__arrow">→</span>
-                  </button>
-                ))}
-              </div>
-                  </div>
-                </div>
-              </section>
-            </div>
           )}
 
           {statusMessage && (

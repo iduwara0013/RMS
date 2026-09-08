@@ -34,7 +34,24 @@ class SelectionController extends Controller
 
     public function index(): JsonResponse
     {
-        return response()->json(['selections' => DB::table('final_selections as f')->join('applications as a', 'a.application_id', '=', 'f.application_id')->join('candidates as c', 'c.candidate_id', '=', 'a.candidate_id')->join('vacancies as v', 'v.vacancy_id', '=', 'a.vacancy_id')->select('f.*', 'a.status as application_status', 'c.name as candidate_name', 'c.email', 'v.title as vacancy_title')->latest('f.created_at')->get()]);
+        return response()->json(['selections' => DB::table('final_selections as f')
+            ->join('applications as a', 'a.application_id', '=', 'f.application_id')
+            ->join('candidates as c', 'c.candidate_id', '=', 'a.candidate_id')
+            ->join('vacancies as v', 'v.vacancy_id', '=', 'a.vacancy_id')
+            ->leftJoin('interviews as i', 'i.application_id', '=', 'a.application_id')
+            ->leftJoin('interview_evaluations as e', 'e.interview_id', '=', 'i.interview_id')
+            ->select(
+                'f.*',
+                'a.status as application_status',
+                'c.name as candidate_name',
+                'c.email',
+                'v.title as vacancy_title',
+                'e.score as interview_score',
+                'e.recommendation as interview_recommendation',
+                'e.comments as interview_comments'
+            )
+            ->latest('f.created_at')
+            ->get()]);
     }
 
     public function nominate(Request $request): JsonResponse
