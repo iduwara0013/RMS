@@ -28,7 +28,7 @@ export default function DashboardNavigation({ roles }: NavigationProps) {
   const items: NavigationItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: '⌂' },
     { href: '/dashboard/vacancies', label: vacancyLabel, icon: '＋', roles: staffRoles },
-    { href: '/dashboard/applications', label: 'Applications', icon: '◌', roles: ['HR Manager', 'Data Entry Operator'] },
+    { href: '/dashboard/applications', label: 'Applications', icon: '◌', roles: ['HR Manager', 'Data Entry Operator', 'Head of Department', 'Managing Director'] },
     { href: '/dashboard/interviews', label: 'Interviews', icon: '▤', roles: ['HR Manager', 'Interview Panel Member'] },
     { href: '/dashboard/selections', label: 'Final selection', icon: '◆', roles: ['HR Manager', 'Managing Director'] },
     { href: '/dashboard/completed', label: 'Completed candidates', icon: '✓', roles: ['HR Manager', 'System Administrator', 'Managing Director'] },

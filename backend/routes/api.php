@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Route;
 Route::pattern('vacancy', '[0-9]+');
 
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/logout', [AuthController::class, 'logout']);
 Route::post('/change-password', [AuthController::class, 'changePassword']);
 Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
 Route::get('/departments', [DepartmentController::class, 'index']);
@@ -29,6 +30,8 @@ Route::post('/vacancies/{vacancy}/applications', [ApplicationController::class, 
 Route::get('/applications', [ApplicationController::class, 'index']);
 Route::get('/applications/completed', [ApplicationController::class, 'completed']);
 Route::post('/applications/{application}/status', [ApplicationController::class, 'updateStatus']);
+Route::get('/applications/{application}/cv-profile', [ApplicationController::class, 'cvProfile']);
+Route::get('/applications/{application}/documents/{document}', [ApplicationController::class, 'document']);
 Route::get('/interviews', [InterviewController::class, 'index']);
 Route::post('/interviews', [InterviewController::class, 'store']);
 Route::post('/interviews/{interview}/evaluate', [InterviewController::class, 'evaluate']);
@@ -47,3 +50,5 @@ Route::post('/vacancies/{vacancy}/hod-approve', [VacancyController::class, 'hodA
 Route::post('/vacancies/{vacancy}/md-approve', [VacancyController::class, 'mdApprove']);
 Route::post('/vacancies/{vacancy}/reject', [VacancyController::class, 'reject']);
 Route::post('/vacancies/{vacancy}/publish', [VacancyController::class, 'publish']);
+Route::post('/vacancies/{vacancy}/cancel', [VacancyController::class, 'cancel']);
+Route::post('/vacancies/{vacancy}/close', [VacancyController::class, 'close']);

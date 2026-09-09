@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardNavigation from '@/components/dashboard-navigation';
+import DateRangeFilter, { matchesDateRange } from '@/components/date-range-filter';
 
 type User = { name: string; roles: string[]; department_id?: number | null; department_name?: string | null };
 type Department = { department_id: number; department_name: string };
@@ -40,14 +41,16 @@ export default function ManageVacanciesPage() {
   const [message, setMessage] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [category, setCategory] = useState<VacancyCategory>('ongoing');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const role = user?.roles[0] ?? '';
   const roles = user?.roles ?? [];
   const categorizedVacancies = useMemo<Record<VacancyCategory, Vacancy[]>>(() => ({
-    ongoing: vacancies.filter((vacancy) => !['Published', 'Closed'].includes(vacancy.status)),
+    ongoing: vacancies.filter((vacancy) => !['Published', 'Closed', 'Cancelled'].includes(vacancy.status)),
     published: vacancies.filter((vacancy) => vacancy.status === 'Published'),
-    finished: vacancies.filter((vacancy) => vacancy.status === 'Closed'),
+    finished: vacancies.filter((vacancy) => ['Closed', 'Cancelled'].includes(vacancy.status)),
   }), [vacancies]);
-  const visibleVacancies = categorizedVacancies[category];
+  const visibleVacancies = useMemo(() => categorizedVacancies[category].filter((vacancy) => matchesDateRange(vacancy.opening_date, fromDate, toDate)), [categorizedVacancies, category, fromDate, toDate]);
   const emptyCategoryMessage: Record<VacancyCategory, string> = {
     ongoing: 'No vacancies are currently moving through the approval workflow.',
     published: 'No vacancies are currently published.',
@@ -122,7 +125,7 @@ export default function ManageVacanciesPage() {
 
   return <main className="dashboard-page"><div className="app-wrapper rms-adminlte">
     <DashboardNavigation roles={roles} />
-    <section className="app-main"><header className="app-header"><span className="app-header__title">Vacancy approval workflow</span><span className="app-header__meta">{user.name}<button className="dashboard-signout" type="button" onClick={() => { sessionStorage.removeItem('rms_user'); router.replace('/'); }}>Sign out</button></span></header><div className="content-wrapper">
+    <section className="app-main"><header className="app-header"><span className="app-header__title">Vacancy approval workflow</span><span className="app-header__meta">{user.name}<button className="dashboard-signout" type="button" onClick={() => { sessionStorage.removeItem('rms_user'); sessionStorage.removeItem('rms_staff_token'); router.replace('/'); }}>Sign out</button></span></header><div className="content-wrapper">
       <div className="content-header"><div><h2>Vacancies</h2><p>Approval steps are selected automatically from the vacancy grade.</p></div><div className="role-badge"><span className="role-badge__dot" />{role}{user.department_name ? ` · ${user.department_name}` : ''}</div></div>{message && <p className="form-message form-message--success">{message}</p>}
       {role === 'HR Manager' && <form className="workflow-create-form" onSubmit={create}><h3>Create vacancy draft</h3><div className="workflow-form-grid">
         <input required placeholder="Vacancy title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
@@ -131,7 +134,7 @@ export default function ManageVacanciesPage() {
         <select aria-label="Candidate audience" value={form.audience} onChange={(event) => setForm({ ...form, audience: event.target.value as 'Internal' | 'External' | 'Both' })}><option value="Internal">Internal candidates only</option><option value="External">External candidates only</option><option value="Both">Internal and external candidates</option></select>
         <input required placeholder="Vacancy type" value={form.vacancy_type} onChange={(event) => setForm({ ...form, vacancy_type: event.target.value })} /><input required type="date" aria-label="Opening date" value={form.opening_date} onChange={(event) => setForm({ ...form, opening_date: event.target.value })} /><input required type="date" aria-label="Closing date" value={form.closing_date} onChange={(event) => setForm({ ...form, closing_date: event.target.value })} /><textarea required placeholder="Description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
       </div><button className="submit-button workflow-submit" type="submit"><span>Save draft</span><span>→</span></button></form>}
-      <div className="vacancy-category-tabs" role="tablist" aria-label="Vacancy categories">
+      <div className="workflow-category-tabs" role="tablist" aria-label="Vacancy categories">
         {([
           ['ongoing', 'Ongoing'],
           ['published', 'Published'],
@@ -141,16 +144,19 @@ export default function ManageVacanciesPage() {
           type="button"
           role="tab"
           aria-selected={category === value}
-          className={`vacancy-category-tab${category === value ? ' active' : ''}`}
+          className={`workflow-category-tab${category === value ? ' active' : ''}`}
           onClick={() => setCategory(value)}
         ><span>{label}</span><strong>{categorizedVacancies[value].length}</strong></button>)}
       </div>
+      <DateRangeFilter fromDate={fromDate} toDate={toDate} dateLabel="opening date" onFromDateChange={setFromDate} onToDateChange={setToDate} />
       <div className="workflow-list" role="tabpanel">{visibleVacancies.map((vacancy) => <article className="workflow-row" key={vacancy.vacancy_id}><div><span className={`workflow-status workflow-status--${vacancy.status.toLowerCase().replaceAll(' ', '-')}`}>{vacancy.status}</span><h3>{vacancy.title}</h3><p>{vacancy.description}</p><small>{vacancy.department?.department_name ?? 'Unassigned department'} · Grade {vacancy.vacancy_grade} · {vacancy.audience} · {vacancy.vacancy_grade === 'A' ? 'HR → HOD → MD' : 'HR → HOD'} · Open {vacancy.opening_date} · Close {vacancy.closing_date}</small>{vacancy.rejection_reason && <p className="workflow-rejection">Returned: {vacancy.rejection_reason}</p>}</div><div className="workflow-actions">
         {role === 'HR Manager' && ['Draft', 'Rejected'].includes(vacancy.status) && <button type="button" onClick={() => action(vacancy.vacancy_id, 'submit')}>HR approve &amp; send to HOD</button>}
         {role === 'Head of Department' && vacancy.status === 'Pending HOD Approval' && <><button type="button" onClick={() => action(vacancy.vacancy_id, 'hod-approve')}>{vacancy.vacancy_grade === 'A' ? 'Approve & send to MD' : 'Approve'}</button><button type="button" onClick={() => action(vacancy.vacancy_id, 'reject', { rejection_reason: 'Please revise the vacancy details.' })}>Send back</button></>}
         {role === 'Managing Director' && vacancy.vacancy_grade === 'A' && vacancy.status === 'Pending MD Approval' && <><button type="button" onClick={() => action(vacancy.vacancy_id, 'md-approve')}>Final approve</button><button type="button" onClick={() => action(vacancy.vacancy_id, 'reject', { rejection_reason: 'Please revise the vacancy details.' })}>Reject</button></>}
         {role === 'HR Manager' && vacancy.status === 'Approved' && <button type="button" onClick={() => action(vacancy.vacancy_id, 'publish')}>Publish</button>}
-      </div></article>)}{visibleVacancies.length === 0 && <div className="vacancy-empty">{emptyCategoryMessage[category]}</div>}</div>
+        {role === 'HR Manager' && ['Draft', 'Rejected', 'Pending HOD Approval', 'Pending MD Approval', 'Approved'].includes(vacancy.status) && <button className="workflow-actions__secondary" type="button" onClick={() => { if (window.confirm(`Cancel ${vacancy.title}? This vacancy will move to Finished.`)) void action(vacancy.vacancy_id, 'cancel'); }}>Cancel vacancy</button>}
+        {role === 'HR Manager' && vacancy.status === 'Published' && <button className="workflow-actions__secondary" type="button" onClick={() => { if (window.confirm(`Close ${vacancy.title}? It will stop accepting applications and move to Finished.`)) void action(vacancy.vacancy_id, 'close'); }}>Close vacancy</button>}
+      </div></article>)}{visibleVacancies.length === 0 && <div className="vacancy-empty">{fromDate || toDate ? `No ${category} vacancies match the selected opening-date range.` : emptyCategoryMessage[category]}</div>}</div>
     </div></section>
   </div></main>;
 }

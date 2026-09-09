@@ -12,4 +12,6 @@ class Application extends Model
     protected function casts(): array { return ['submitted_at' => 'datetime']; }
     public function candidate() { return $this->belongsTo(Candidate::class, 'candidate_id', 'candidate_id'); }
     public function vacancy() { return $this->belongsTo(Vacancy::class, 'vacancy_id', 'vacancy_id'); }
+    public function documents() { return $this->hasMany(Document::class, 'application_id', 'application_id'); }
+    public function cvProfile() { return $this->hasOne(CvProfile::class, 'application_id', 'application_id'); }
 }

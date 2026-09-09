@@ -14,18 +14,20 @@ class SelectionController extends Controller
         $rows = DB::table('applications as a')
             ->join('candidates as c', 'c.candidate_id', '=', 'a.candidate_id')
             ->join('vacancies as v', 'v.vacancy_id', '=', 'a.vacancy_id')
+            ->leftJoin('Department as d', 'd.department_id', '=', 'v.department_id')
             ->join('interviews as i', 'i.application_id', '=', 'a.application_id')
             ->join('interview_evaluations as e', 'e.interview_id', '=', 'i.interview_id')
             ->where('a.status', 'Evaluated')
             ->when($request->filled('vacancy_id'), fn ($q) => $q->where('a.vacancy_id', $request->integer('vacancy_id')))
-            ->select('a.application_id', 'a.vacancy_id', 'c.name as candidate_name', 'c.email', 'v.title as vacancy_title', 'e.score', 'e.recommendation', 'e.comments')
+            ->select('a.application_id', 'a.vacancy_id', 'c.name as candidate_name', 'c.email', 'v.title as vacancy_title', 'v.department_id', 'd.department_name', 'e.score', 'e.recommendation', 'e.comments')
             ->orderByDesc('e.score')->get();
 
         $ranked = $rows->groupBy('vacancy_id')->flatMap(function ($group) {
             return $group->values()->map(fn ($row, $index) => [
                 'application_id' => $row->application_id, 'vacancy_id' => $row->vacancy_id,
                 'candidate_name' => $row->candidate_name, 'email' => $row->email,
-                'vacancy_title' => $row->vacancy_title, 'score' => $row->score,
+                'vacancy_title' => $row->vacancy_title, 'department_id' => $row->department_id,
+                'department_name' => $row->department_name, 'score' => $row->score,
                 'recommendation' => $row->recommendation, 'comments' => $row->comments, 'rank' => $index + 1,
             ]);
         })->values();
@@ -38,6 +40,7 @@ class SelectionController extends Controller
             ->join('applications as a', 'a.application_id', '=', 'f.application_id')
             ->join('candidates as c', 'c.candidate_id', '=', 'a.candidate_id')
             ->join('vacancies as v', 'v.vacancy_id', '=', 'a.vacancy_id')
+            ->leftJoin('Department as d', 'd.department_id', '=', 'v.department_id')
             ->leftJoin('interviews as i', 'i.application_id', '=', 'a.application_id')
             ->leftJoin('interview_evaluations as e', 'e.interview_id', '=', 'i.interview_id')
             ->select(
@@ -46,6 +49,8 @@ class SelectionController extends Controller
                 'c.name as candidate_name',
                 'c.email',
                 'v.title as vacancy_title',
+                'v.department_id',
+                'd.department_name',
                 'e.score as interview_score',
                 'e.recommendation as interview_recommendation',
                 'e.comments as interview_comments'

@@ -129,4 +129,34 @@ class VacancyController extends Controller
             'vacancy' => $vacancy->fresh(),
         ]);
     }
+
+    public function cancel(Request $request, Vacancy $vacancy): JsonResponse
+    {
+        abort_unless($request->header('X-User-Role') === 'HR Manager', 403, 'Only HR Manager can cancel vacancies.');
+        abort_unless(
+            in_array($vacancy->status, ['Draft', 'Rejected', 'Pending HOD Approval', 'Pending MD Approval', 'Approved'], true),
+            422,
+            'Only an unpublished vacancy can be cancelled.'
+        );
+
+        $vacancy->update(['status' => 'Cancelled']);
+
+        return response()->json([
+            'message' => 'Vacancy cancelled and moved to Finished.',
+            'vacancy' => $vacancy->fresh('department'),
+        ]);
+    }
+
+    public function close(Request $request, Vacancy $vacancy): JsonResponse
+    {
+        abort_unless($request->header('X-User-Role') === 'HR Manager', 403, 'Only HR Manager can close published vacancies.');
+        abort_unless($vacancy->status === 'Published', 422, 'Only a published vacancy can be closed.');
+
+        $vacancy->update(['status' => 'Closed']);
+
+        return response()->json([
+            'message' => 'Vacancy closed. It is no longer accepting applications and was moved to Finished.',
+            'vacancy' => $vacancy->fresh('department'),
+        ]);
+    }
 }

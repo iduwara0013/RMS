@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Application;
 use App\Models\Candidate;
+use App\Models\Document;
 use App\Models\User;
 use App\Models\Vacancy;
+use App\Services\CvProfileExtractor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -99,7 +101,7 @@ class InternalEmployeeController extends Controller
             ->orderBy('closing_date')->get()]);
     }
 
-    public function apply(Request $request, Vacancy $vacancy): JsonResponse
+    public function apply(Request $request, Vacancy $vacancy, CvProfileExtractor $extractor): JsonResponse
     {
         $employee = $this->employeeFromToken($request);
         abort_unless($vacancy->status === 'Published' && in_array($vacancy->audience, ['Internal', 'Both'], true) && $vacancy->closing_date->isFuture(), 422, 'This internal vacancy is no longer accepting applications.');
@@ -109,7 +111,7 @@ class InternalEmployeeController extends Controller
             'address' => ['required', 'string', 'max:500'], 'cv' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:5120'],
         ]);
 
-        $application = DB::transaction(function () use ($data, $vacancy, $request, $employee) {
+        [$application, $document] = DB::transaction(function () use ($data, $vacancy, $request, $employee) {
             $candidate = Candidate::updateOrCreate(['nic' => $data['nic']], [
                 'name' => $employee->name, 'email' => $data['email'], 'phone' => $employee->phone, 'address' => $data['address'],
             ]);
@@ -118,10 +120,12 @@ class InternalEmployeeController extends Controller
                 'candidate_id' => $candidate->candidate_id, 'vacancy_id' => $vacancy->vacancy_id,
                 'employee_id' => $employee->id, 'applicant_type' => 'Internal', 'submitted_at' => now(), 'status' => 'Submitted',
             ]);
-            $path = $request->file('cv')->store('candidate-documents', 'public');
-            DB::table('documents')->insert(['application_id' => $application->application_id, 'document_type' => 'CV', 'file_name' => $request->file('cv')->getClientOriginalName(), 'file_path' => $path, 'uploaded_at' => now()]);
-            return $application;
+            $path = $request->file('cv')->store('candidate-documents', 'local');
+            $document = Document::create(['application_id' => $application->application_id, 'document_type' => 'CV', 'file_name' => $request->file('cv')->getClientOriginalName(), 'file_path' => $path, 'uploaded_at' => now()]);
+            return [$application, $document];
         });
+
+        $extractor->extractAndStore($application, $document);
 
         return response()->json(['message' => 'Internal application submitted successfully.', 'application_id' => $application->application_id], 201);
     }

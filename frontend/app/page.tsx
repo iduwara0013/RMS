@@ -17,6 +17,7 @@ type AuthenticatedUser = {
 type LoginResponse = {
   message?: string;
   first_login?: boolean;
+  token?: string;
   user?: AuthenticatedUser;
 };
 type ApiMessageResponse = { message?: string };
@@ -59,6 +60,7 @@ export default function LoginPage() {
       const payload = await response.json().catch(() => ({})) as LoginResponse;
       if (!response.ok) throw new Error(payload.message ?? 'Unable to sign in.');
       if (payload.user) sessionStorage.setItem('rms_user', JSON.stringify(payload.user));
+      if (payload.token) sessionStorage.setItem('rms_staff_token', payload.token);
       if (payload.first_login) setScreen('first-time-setup');
       else router.push('/dashboard');
     } catch (error) {
@@ -118,6 +120,7 @@ export default function LoginPage() {
     setConfirmPassword('');
     setStatusMessage(null);
     sessionStorage.removeItem('rms_user');
+    sessionStorage.removeItem('rms_staff_token');
     router.push('/');
   }
 
@@ -382,14 +385,6 @@ export default function LoginPage() {
               {statusMessage.text}
             </p>
           )}
-
-          <div className="access-note">
-            <span className="access-note__icon" aria-hidden="true">✓</span>
-            <div>
-              <strong>Your access is role-based</strong>
-              <p>CPSTL staff dashboards and permitted operations are determined by your assigned designation and role.</p>
-            </div>
-          </div>
 
           <p className="support-copy">
             Need help with your EPF or PIN? <a href="mailto:is.support@cpstl.lk">Contact IS support</a>

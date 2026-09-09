@@ -28,6 +28,12 @@ return [
         'key' => env('RESEND_KEY'),
     ],
 
+    'cv_parser' => [
+        'enabled' => env('CV_PARSER_ENABLED', true),
+        'url' => env('CV_PARSER_URL', 'http://127.0.0.1:8001'),
+        'timeout' => env('CV_PARSER_TIMEOUT', 20),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
