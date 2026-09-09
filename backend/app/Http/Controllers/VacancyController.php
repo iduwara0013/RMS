@@ -57,6 +57,23 @@ class VacancyController extends Controller
         return response()->json(['vacancy' => $vacancy], 201);
     }
 
+    public function update(Request $request, Vacancy $vacancy): JsonResponse
+    {
+        abort_unless(in_array($vacancy->status, ['Draft', 'Rejected'], true), 422, 'Only draft or returned vacancies can be edited.');
+        $data = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['required', 'string'],
+            'vacancy_type' => ['required', 'string', 'max:80'],
+            'vacancy_grade' => ['required', 'in:A,B,C'],
+            'audience' => ['required', 'in:Internal,External,Both'],
+            'opening_date' => ['required', 'date'],
+            'closing_date' => ['required', 'date', 'after_or_equal:opening_date'],
+            'department_id' => ['required', 'integer', 'exists:Department,department_id'],
+        ]);
+        $vacancy->update($data + ['status' => 'Draft', 'hr_approved_at' => null, 'hod_approved_at' => null, 'md_approved_at' => null]);
+        return response()->json(['message' => 'Vacancy corrected. Submit it for approval again.', 'vacancy' => $vacancy->fresh('department')]);
+    }
+
     public function submit(Request $request, Vacancy $vacancy): JsonResponse
     {
         abort_unless($request->header('X-User-Role') === 'HR Manager', 403);
@@ -122,6 +139,7 @@ class VacancyController extends Controller
     {
         abort_unless(request()->header('X-User-Role') === 'HR Manager', 403);
         abort_unless($vacancy->status === 'Approved', 422, 'Only finally approved vacancies can be published.');
+        abort_if($vacancy->closing_date->lt(today()), 422, 'Update the expired closing date before publication.');
         $vacancy->update(['status' => 'Published']);
 
         return response()->json([

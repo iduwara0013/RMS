@@ -21,6 +21,7 @@ class StaffAccess
 
         $user = User::with(['roles', 'department'])->find($token->user_id);
         abort_unless($user, 401, 'Your staff account is no longer available.');
+        abort_if($user->is_active === false, 401, 'Your account has been deactivated. Contact HR.');
 
         DB::table('staff_access_tokens')->where('id', $token->id)->update([
             'last_used_at' => now(),

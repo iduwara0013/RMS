@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch as fetch, signOutStaff } from '@/lib/staff-fetch';
+
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardNavigation from '@/components/dashboard-navigation';
@@ -97,7 +99,7 @@ export default function DashboardPage() {
     return () => controller.abort();
   }, [router, user]);
 
-  function signOut() { sessionStorage.removeItem('rms_user'); sessionStorage.removeItem('rms_staff_token'); router.replace('/'); }
+  function signOut() { void signOutStaff(); }
   const roles = user?.roles ?? [];
   const actions = roles.flatMap((role) => actionMap[role] ?? []);
 

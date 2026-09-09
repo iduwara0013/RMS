@@ -14,5 +14,10 @@ class Department extends Model
 
     public $timestamps = false;
 
-    protected $fillable = ['department_name', 'description'];
+    protected $fillable = ['department_name', 'description', 'is_active'];
+
+    protected function casts(): array
+    {
+        return ['is_active' => 'boolean'];
+    }
 }

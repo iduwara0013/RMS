@@ -95,7 +95,7 @@ export default function LoginPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/change-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rms_staff_token') ?? ''}` },
         body: JSON.stringify({
           identifier: employeeIdentifier,
           password: newPassword,

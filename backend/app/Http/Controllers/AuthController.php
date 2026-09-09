@@ -21,7 +21,7 @@ class AuthController extends Controller
             ->orWhere('employee_epf', $data['identifier'])
             ->first();
 
-        if (!$user) {
+        if (!$user || $user->is_active === false) {
             return response()->json(['message' => 'Invalid Employee PIN/EPF or password.'], 401);
         }
 
@@ -69,9 +69,10 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $user = User::where('employee_pin', $data['identifier'])
-            ->orWhere('employee_epf', $data['identifier'])
-            ->firstOrFail();
+        $user = $request->user();
+        abort_unless(in_array($data['identifier'], [$user->employee_pin, $user->employee_epf], true), 403);
+        abort_unless($user->first_login || Hash::check((string) $request->input('current_password'), $user->password), 422, 'Your current password is required.');
+        abort_if(in_array($data['password'], [$user->employee_pin, $user->employee_epf], true), 422, 'Choose a password different from your employee identifiers.');
 
         $user->update([
             'password' => Hash::make($data['password']),

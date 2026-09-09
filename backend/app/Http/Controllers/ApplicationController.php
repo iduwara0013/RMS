@@ -78,6 +78,8 @@ class ApplicationController extends Controller
         abort_unless($user->roles->contains('role_name', 'HR Manager'), 403, 'Only HR Manager can update application status.');
         $data = $request->validate(['status' => ['required', 'in:Verified,Rejected,Shortlisted']]);
         abort_unless(in_array($data['status'], ['Verified', 'Rejected', 'Shortlisted'], true), 422);
+        $allowed = ['Submitted' => ['Verified', 'Rejected'], 'Verified' => ['Shortlisted', 'Rejected']];
+        abort_unless(in_array($data['status'], $allowed[$application->status] ?? [], true), 422, 'This application cannot move to that stage.');
         $application->update(['status' => $data['status']]);
         return response()->json(['message' => "Application marked {$data['status']}.", 'application' => $application->fresh(['candidate', 'vacancy'])]);
     }

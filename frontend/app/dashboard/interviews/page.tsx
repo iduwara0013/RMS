@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch as fetch, signOutStaff } from '@/lib/staff-fetch';
+
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardNavigation from '@/components/dashboard-navigation';
@@ -93,7 +95,7 @@ export default function InterviewsPage() {
 
   return <main className="dashboard-page"><div className="app-wrapper rms-adminlte">
     <DashboardNavigation roles={user.roles} />
-    <section className="app-main"><header className="app-header"><span className="app-header__title">Interview management</span><span className="app-header__meta">{user.name}<button className="dashboard-signout" type="button" onClick={() => { sessionStorage.removeItem('rms_user'); sessionStorage.removeItem('rms_staff_token'); router.replace('/'); }}>Sign out</button></span></header><div className="content-wrapper">
+    <section className="app-main"><header className="app-header"><span className="app-header__title">Interview management</span><span className="app-header__meta">{user.name}<button className="dashboard-signout" type="button" onClick={() => { void signOutStaff(); }}>Sign out</button></span></header><div className="content-wrapper">
       <div className="content-header"><div><h2>Interviews</h2><p>Schedule shortlisted candidates and record panel evaluations.</p></div><div className="role-badge"><span className="role-badge__dot" />{role}</div></div>
       {message && <p className="form-message form-message--success">{message}</p>}
       <div className="workflow-category-tabs workflow-category-tabs--two" role="tablist" aria-label="Interview stages">

@@ -55,6 +55,7 @@ class SelectionController extends Controller
                 'e.recommendation as interview_recommendation',
                 'e.comments as interview_comments'
             )
+            ->selectSub(DB::table('candidate_notifications as n')->selectRaw('COUNT(*)')->whereColumn('n.application_id', 'f.application_id')->where('n.notification_type', 'Appointment'), 'finalized_count')
             ->latest('f.created_at')
             ->get()]);
     }
@@ -66,7 +67,8 @@ class SelectionController extends Controller
         $application = Application::findOrFail($data['application_id']);
         abort_unless($application->status === 'Evaluated', 422, 'Only evaluated candidates can be selected.');
         abort_if(DB::table('final_selections')->where('application_id', $application->application_id)->whereIn('status', ['Pending MD Approval', 'Approved'])->exists(), 422, 'This candidate already has a final selection.');
-        $id = DB::table('final_selections')->insertGetId(['application_id' => $application->application_id, 'selected_by' => null, 'status' => 'Pending MD Approval', 'comments' => $data['comments'] ?? null, 'selected_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        abort_if(DB::table('final_selections as f')->join('applications as a', 'a.application_id', '=', 'f.application_id')->where('a.vacancy_id', $application->vacancy_id)->whereIn('f.status', ['Pending MD Approval', 'Approved'])->exists(), 422, 'This vacancy already has a pending or approved selection.');
+        $id = DB::table('final_selections')->insertGetId(['application_id' => $application->application_id, 'selected_by' => $request->user()->id, 'status' => 'Pending MD Approval', 'comments' => $data['comments'] ?? null, 'selected_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
         $application->update(['status' => 'Final Selection Pending']);
         return response()->json(['message' => 'Final selection submitted for Managing Director approval.', 'selection_id' => $id], 201);
     }
@@ -76,8 +78,8 @@ class SelectionController extends Controller
         abort_unless($request->header('X-User-Role') === 'Managing Director', 403, 'Only Managing Director can approve final selection.');
         $record = DB::table('final_selections')->where('selection_id', $selection)->first();
         abort_unless($record && $record->status === 'Pending MD Approval', 422, 'This selection is not awaiting approval.');
-        DB::transaction(function () use ($record, $selection) {
-            DB::table('final_selections')->where('selection_id', $selection)->update(['status' => 'Approved', 'approved_at' => now(), 'updated_at' => now()]);
+        DB::transaction(function () use ($record, $selection, $request) {
+            DB::table('final_selections')->where('selection_id', $selection)->update(['status' => 'Approved', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
             Application::where('application_id', $record->application_id)->update(['status' => 'Selected']);
         });
         return response()->json(['message' => 'Final selection approved successfully.']);
@@ -88,7 +90,7 @@ class SelectionController extends Controller
         abort_unless($request->header('X-User-Role') === 'Managing Director', 403, 'Only Managing Director can reject final selection.');
         $record = DB::table('final_selections')->where('selection_id', $selection)->first();
         abort_unless($record && $record->status === 'Pending MD Approval', 422, 'This selection is not awaiting approval.');
-        DB::table('final_selections')->where('selection_id', $selection)->update(['status' => 'Rejected', 'approved_at' => now(), 'updated_at' => now()]);
+        DB::table('final_selections')->where('selection_id', $selection)->update(['status' => 'Rejected', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
         Application::where('application_id', $record->application_id)->update(['status' => 'Evaluated']);
         return response()->json(['message' => 'Final selection rejected and returned for review.']);
     }
@@ -106,6 +108,7 @@ class SelectionController extends Controller
         abort_unless($request->header('X-User-Role') === 'HR Manager', 403, 'Only HR Manager can close a vacancy.');
         $record = DB::table('final_selections as f')->join('applications as a', 'a.application_id', '=', 'f.application_id')->join('candidates as c', 'c.candidate_id', '=', 'a.candidate_id')->join('vacancies as v', 'v.vacancy_id', '=', 'a.vacancy_id')->where('f.selection_id', $selection)->select('f.status as selection_status', 'a.application_id', 'a.vacancy_id', 'c.name as selected_name', 'c.email as selected_email', 'v.title as vacancy_title')->first();
         abort_unless($record && $record->selection_status === 'Approved', 422, 'Only an approved selection can close a vacancy.');
+        abort_if(DB::table('candidate_notifications')->where('application_id', $record->application_id)->where('notification_type', 'Appointment')->exists(), 409, 'This selection has already been finalized and notifications recorded.');
         $result = DB::transaction(function () use ($record) {
             $others = DB::table('applications as a')->join('candidates as c', 'c.candidate_id', '=', 'a.candidate_id')->where('a.vacancy_id', $record->vacancy_id)->where('a.application_id', '!=', $record->application_id)->select('a.application_id', 'a.status', 'c.email')->get();
             DB::table('applications')->where('application_id', $record->application_id)->update(['status' => 'Selected']);

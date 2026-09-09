@@ -30,7 +30,7 @@ class InternalEmployeeController extends Controller
 
         $user = User::with('roles')->where('employee_epf', $data['employee_epf'])->first();
         $phoneMatches = $user && $this->normalisePhone($user->phone) === $this->normalisePhone($data['phone']);
-        $isEmployee = $user?->roles->contains('role_name', 'Internal Employee') ?? false;
+        $isEmployee = $user && $user->is_active !== false && $user->roles->contains('role_name', 'Internal Employee');
         abort_unless($phoneMatches && $isEmployee, 422, 'Employee EPF and phone number do not match an active internal employee account.');
 
         $otpDriver = (string) config('internal_otp.driver', 'mock');
@@ -62,7 +62,7 @@ class InternalEmployeeController extends Controller
             'otp' => ['required', 'digits:6'],
         ]);
         $user = User::with('roles')->where('employee_epf', $data['employee_epf'])->firstOrFail();
-        abort_unless($user->roles->contains('role_name', 'Internal Employee'), 403, 'This account is not an internal employee account.');
+        abort_unless($user->is_active !== false && $user->roles->contains('role_name', 'Internal Employee'), 403, 'This account is not an active internal employee account.');
 
         $challenge = DB::table('internal_otp_challenges')
             ->where('user_id', $user->id)->whereNull('verified_at')->latest('id')->first();
@@ -144,7 +144,9 @@ class InternalEmployeeController extends Controller
         $token = DB::table('internal_access_tokens')->where('token_hash', hash('sha256', $plainToken))->where('expires_at', '>', now())->first();
         abort_unless($token, 401, 'Your employee session has expired.');
         DB::table('internal_access_tokens')->where('id', $token->id)->update(['last_used_at' => now(), 'updated_at' => now()]);
-        return User::findOrFail($token->user_id);
+        $user = User::with('roles')->findOrFail($token->user_id);
+        abort_unless($user->is_active !== false && $user->roles->contains('role_name', 'Internal Employee'), 401, 'Your employee access is no longer available.');
+        return $user;
     }
 
     private function normalisePhone(?string $phone): string

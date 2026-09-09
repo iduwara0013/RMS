@@ -31,6 +31,7 @@ class User extends Authenticatable
         'department_id',
         'password',
         'first_login',
+        'is_active',
     ];
 
     public function department()
@@ -59,6 +60,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'first_login' => 'boolean',
+            'is_active' => 'boolean',
         ];
     }
 }

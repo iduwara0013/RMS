@@ -41,7 +41,10 @@ export default function VacanciesPage() {
   useEffect(() => {
     fetch(`${API_BASE_URL}/vacancies`)
       .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((payload) => setVacancies(payload.vacancies ?? []))
+      .then((payload: unknown) => {
+        if (!payload || typeof payload !== 'object' || !('vacancies' in payload) || !Array.isArray(payload.vacancies)) throw new Error('Invalid vacancies response');
+        setVacancies(payload.vacancies as Vacancy[]);
+      })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, []);

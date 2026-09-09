@@ -22,8 +22,8 @@ class InterviewController extends Controller
         $data = $request->validate([
             'application_ids' => ['required', 'array', 'min:1'],
             'application_ids.*' => ['required', 'integer', 'distinct', 'exists:applications,application_id'],
-            'interview_date' => ['required', 'date'],
-            'interview_time' => ['required'],
+            'interview_date' => ['required', 'date', 'after_or_equal:today'],
+            'interview_time' => ['required', 'date_format:H:i'],
             'location' => ['required', 'string', 'max:255'],
         ]);
 
@@ -66,6 +66,8 @@ class InterviewController extends Controller
     public function evaluate(Request $request, Interview $interview): JsonResponse
     {
         abort_unless($request->header('X-User-Role') === 'Interview Panel Member', 403, 'Only interview panel members can evaluate.');
+        abort_unless($interview->status === 'Scheduled' && $interview->application->status === 'Interview Scheduled', 422, 'This interview is no longer awaiting evaluation.');
+        abort_if(DB::table('interview_evaluations')->where('interview_id', $interview->interview_id)->exists(), 422, 'An evaluation has already been recorded.');
         $data = $request->validate(['score' => ['required', 'numeric', 'min:0', 'max:100'], 'comments' => ['required', 'string', 'max:2000'], 'recommendation' => ['required', 'in:Recommended,Not recommended,Keep in reserve']]);
         DB::table('interview_evaluations')->insert(['interview_id' => $interview->interview_id, 'score' => $data['score'], 'comments' => $data['comments'], 'recommendation' => $data['recommendation'], 'evaluated_at' => now()]);
         $interview->update(['status' => 'Evaluated']);

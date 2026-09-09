@@ -10,7 +10,7 @@ class DepartmentController extends Controller
     public function index(): JsonResponse
     {
         return response()->json([
-            'departments' => Department::query()->orderBy('department_name')->get(),
+            'departments' => Department::query()->where('is_active', true)->orderBy('department_name')->get(),
         ]);
     }
 }

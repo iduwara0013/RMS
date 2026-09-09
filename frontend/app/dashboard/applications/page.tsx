@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch as fetch, signOutStaff } from '@/lib/staff-fetch';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardNavigation from '@/components/dashboard-navigation';
@@ -171,7 +173,7 @@ export default function ApplicationsPage() {
         <section className="app-main">
           <header className="app-header">
             <span className="app-header__title">Application management</span>
-            <span className="app-header__meta">{user.name}<button className="dashboard-signout" onClick={() => { sessionStorage.removeItem('rms_user'); sessionStorage.removeItem('rms_staff_token'); router.replace('/'); }}>Sign out</button></span>
+            <span className="app-header__meta">{user.name}<button className="dashboard-signout" onClick={() => { void signOutStaff(); }}>Sign out</button></span>
           </header>
           <div className="content-wrapper">
             <div className="content-header"><div><h2>Applications</h2><p>Verify candidate submissions and prepare the shortlist.</p></div><div className="role-badge"><span className="role-badge__dot" />{user.roles.join(' · ')}</div></div>

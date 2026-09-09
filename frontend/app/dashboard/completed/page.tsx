@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch as fetch, signOutStaff } from '@/lib/staff-fetch';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardNavigation from '@/components/dashboard-navigation';
@@ -50,7 +52,7 @@ export default function CompletedCandidatesPage() {
 
   return <main className="dashboard-page"><div className="app-wrapper rms-adminlte">
     <DashboardNavigation roles={user.roles} />
-    <section className="app-main"><header className="app-header"><span className="app-header__title">Completed candidates</span><span className="app-header__meta">{user.name}<button className="dashboard-signout" type="button" onClick={() => { sessionStorage.removeItem('rms_user'); sessionStorage.removeItem('rms_staff_token'); router.replace('/'); }}>Sign out</button></span></header><div className="content-wrapper">
+    <section className="app-main"><header className="app-header"><span className="app-header__title">Completed candidates</span><span className="app-header__meta">{user.name}<button className="dashboard-signout" type="button" onClick={() => { void signOutStaff(); }}>Sign out</button></span></header><div className="content-wrapper">
       <div className="content-header"><div><h2>Completed candidates</h2><p>Review candidates whose recruitment process has been finalized.</p></div><div className="role-badge"><span className="role-badge__dot" />{candidates.length} completed</div></div>
       {error && <p className="form-message form-message--error">{error}</p>}
       <div className="completion-summary"><div><span>Total completed</span><strong>{candidates.length}</strong></div><div><span>Selected</span><strong>{selectedCount}</strong></div><div><span>Not selected</span><strong>{candidates.length - selectedCount}</strong></div></div>
