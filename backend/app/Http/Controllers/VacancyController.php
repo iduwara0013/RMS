@@ -24,7 +24,7 @@ class VacancyController extends Controller
     public function showPublic(Vacancy $vacancy): JsonResponse
     {
         abort_unless($vacancy->status === 'Published' && in_array($vacancy->audience, ['External', 'Both'], true), 404);
-        return response()->json(['vacancy' => $vacancy->load('department')]);
+        return response()->json(['vacancy' => $vacancy->load(['department', 'applicationForm'])]);
     }
 
     public function index(Request $request): JsonResponse
@@ -51,7 +51,7 @@ class VacancyController extends Controller
             'audience' => ['required', 'in:Internal,External,Both'],
             'opening_date' => ['required', 'date'],
             'closing_date' => ['required', 'date', 'after_or_equal:opening_date'],
-            'department_id' => ['required', 'integer', 'exists:Department,department_id'],
+            'department_id' => ['required', 'integer', \Illuminate\Validation\Rule::exists('Department', 'department_id')->where('is_active', true)],
         ]);
         $vacancy = Vacancy::create($data + ['status' => 'Draft']);
         return response()->json(['vacancy' => $vacancy], 201);
@@ -68,7 +68,7 @@ class VacancyController extends Controller
             'audience' => ['required', 'in:Internal,External,Both'],
             'opening_date' => ['required', 'date'],
             'closing_date' => ['required', 'date', 'after_or_equal:opening_date'],
-            'department_id' => ['required', 'integer', 'exists:Department,department_id'],
+            'department_id' => ['required', 'integer', \Illuminate\Validation\Rule::exists('Department', 'department_id')->where('is_active', true)],
         ]);
         $vacancy->update($data + ['status' => 'Draft', 'hr_approved_at' => null, 'hod_approved_at' => null, 'md_approved_at' => null]);
         return response()->json(['message' => 'Vacancy corrected. Submit it for approval again.', 'vacancy' => $vacancy->fresh('department')]);

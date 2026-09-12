@@ -60,6 +60,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'first_login' => 'boolean',
+            'department_id' => 'integer',
             'is_active' => 'boolean',
         ];
     }

@@ -37,18 +37,23 @@ function isDashboardSummary(value: unknown): value is DashboardSummary {
 
 const actionMap: Record<string, { icon: string; title: string; description: string; href: string }[]> = {
   'System Administrator': [
+    { icon: '♙', title: 'Manage users', description: 'Manage accounts, roles and employee access.', href: '/dashboard/users' },
+    { icon: '▦', title: 'Manage departments', description: 'Organize departments and assigned HODs.', href: '/dashboard/departments' },
     { icon: '＋', title: 'Review vacancies', description: 'Monitor recruitment vacancy workflows.', href: '/dashboard/vacancies' },
     { icon: '▣', title: 'View notifications', description: 'Review recorded candidate communications.', href: '/dashboard/notifications' },
     { icon: '✓', title: 'Completed candidates', description: 'Review finalized recruitment outcomes.', href: '/dashboard/completed' },
   ],
   'HR Manager': [
+    { icon: '▤', title: 'Build application forms', description: 'Create vacancy-specific questions and document requirements.', href: '/dashboard/forms' },
+    { icon: '♙', title: 'Manage users', description: 'Maintain employee details and account access.', href: '/dashboard/users' },
+    { icon: '▦', title: 'Manage departments', description: 'Organize departments and assigned HODs.', href: '/dashboard/departments' },
     { icon: '＋', title: 'Manage vacancies', description: 'Create and publish recruitment vacancies.', href: '/dashboard/vacancies' },
     { icon: '◌', title: 'Review applications', description: 'Verify candidate submissions.', href: '/dashboard/applications' },
     { icon: '★', title: 'Shortlist candidates', description: 'Prepare candidates for interviews.', href: '/dashboard/applications' },
     { icon: '✓', title: 'Completed candidates', description: 'Review finalized recruitment outcomes.', href: '/dashboard/completed' },
   ],
-  'Head of Department': [{ icon: '✓', title: 'Review vacancies', description: 'Review and approve department requests.', href: '/dashboard/vacancies' }, { icon: '◌', title: 'Department applications', description: 'Review candidates for your department.', href: '/dashboard/applications' }],
-  'Managing Director': [{ icon: '＋', title: 'Approve Grade A vacancies', description: 'Review executive-grade vacancy requests.', href: '/dashboard/vacancies' }, { icon: '◆', title: 'Final candidate approvals', description: 'Approve or reject final candidate selections.', href: '/dashboard/selections' }, { icon: '✓', title: 'Completed candidates', description: 'Review finalized recruitment outcomes.', href: '/dashboard/completed' }],
+  'Head of Department': [{ icon: '✓', title: 'Review vacancies', description: 'Review and approve department requests.', href: '/dashboard/vacancies' }, { icon: '◌', title: 'Department applications', description: 'Review candidates for your department.', href: '/dashboard/applications' }, { icon: '▤', title: 'Interview scores', description: 'Review individual and combined scores for your department.', href: '/dashboard/interviews' }],
+  'Managing Director': [{ icon: '＋', title: 'Approve Grade A vacancies', description: 'Review executive-grade vacancy requests.', href: '/dashboard/vacancies' }, { icon: '▤', title: 'Interview scores', description: 'Review panel member and combined interview scores.', href: '/dashboard/interviews' }, { icon: '◆', title: 'Final candidate approvals', description: 'Approve or reject final candidate selections.', href: '/dashboard/selections' }, { icon: '✓', title: 'Completed candidates', description: 'Review finalized recruitment outcomes.', href: '/dashboard/completed' }],
   'Data Entry Operator': [{ icon: '✎', title: 'Review candidate records', description: 'Check newly submitted application details.', href: '/dashboard/applications' }],
   'Interview Panel Member': [{ icon: '▤', title: 'Evaluate interviews', description: 'Record scores and interview recommendations.', href: '/dashboard/interviews' }],
 };

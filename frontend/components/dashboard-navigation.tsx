@@ -27,9 +27,12 @@ export default function DashboardNavigation({ roles }: NavigationProps) {
   const vacancyLabel = roles.includes('HR Manager') ? 'Vacancies' : 'Approvals';
   const items: NavigationItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: '⌂' },
+    { href: '/dashboard/forms', label: 'Application forms', icon: '▤', roles: ['HR Manager'] },
+    { href: '/dashboard/users', label: 'Users', icon: '♙', roles: ['HR Manager', 'System Administrator'] },
+    { href: '/dashboard/departments', label: 'Departments', icon: '▦', roles: ['HR Manager', 'System Administrator'] },
     { href: '/dashboard/vacancies', label: vacancyLabel, icon: '＋', roles: staffRoles },
     { href: '/dashboard/applications', label: 'Applications', icon: '◌', roles: ['HR Manager', 'Data Entry Operator', 'Head of Department', 'Managing Director'] },
-    { href: '/dashboard/interviews', label: 'Interviews', icon: '▤', roles: ['HR Manager', 'Interview Panel Member'] },
+    { href: '/dashboard/interviews', label: 'Interviews', icon: '▤', roles: ['HR Manager', 'Interview Panel Member', 'Head of Department', 'Managing Director'] },
     { href: '/dashboard/selections', label: 'Final selection', icon: '◆', roles: ['HR Manager', 'Managing Director'] },
     { href: '/dashboard/completed', label: 'Completed candidates', icon: '✓', roles: ['HR Manager', 'System Administrator', 'Managing Director'] },
     { href: '/dashboard/notifications', label: 'Notifications', icon: '▣', roles: ['HR Manager', 'System Administrator'] },

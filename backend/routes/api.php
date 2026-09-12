@@ -13,6 +13,19 @@ use Illuminate\Support\Facades\Route;
 // Prevent static endpoints such as /vacancies/all from being captured by
 // implicit vacancy model binding.
 Route::pattern('vacancy', '[0-9]+');
+Route::get('/vacancies/{vacancy}/form', [\App\Http\Controllers\VacancyFormController::class, 'show'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager');
+Route::post('/vacancies/{vacancy}/form', [\App\Http\Controllers\VacancyFormController::class, 'store'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager');
+
+Route::prefix('management')->middleware(\App\Http\Middleware\StaffSession::class.':System Administrator,HR Manager')->group(function () {
+    $controller = \App\Http\Controllers\StaffManagementController::class;
+    Route::get('/', [$controller, 'index']);
+    Route::post('/users', [$controller, 'saveUser']);
+    Route::put('/users/{staff}', [$controller, 'saveUser'])->whereNumber('staff');
+    Route::post('/users/{staff}/reset-password', [$controller, 'resetPassword'])->whereNumber('staff');
+    Route::patch('/users/{staff}/active', [$controller, 'setActive'])->whereNumber('staff');
+    Route::post('/departments', [$controller, 'saveDepartment']);
+    Route::put('/departments/{department}', [$controller, 'saveDepartment'])->whereNumber('department');
+});
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/logout', [AuthController::class, 'logout'])->middleware(\App\Http\Middleware\StaffSession::class.':System Administrator,HR Manager,Head of Department,Managing Director,Data Entry Operator,Interview Panel Member,Internal Employee');
@@ -32,9 +45,10 @@ Route::get('/applications/completed', [ApplicationController::class, 'completed'
 Route::post('/applications/{application}/status', [ApplicationController::class, 'updateStatus'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager');
 Route::get('/applications/{application}/cv-profile', [ApplicationController::class, 'cvProfile'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager,Head of Department,Managing Director');
 Route::get('/applications/{application}/documents/{document}', [ApplicationController::class, 'document'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager,Head of Department,Managing Director');
-Route::get('/interviews', [InterviewController::class, 'index'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager,Interview Panel Member');
+Route::get('/interviews', [InterviewController::class, 'index'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager,Interview Panel Member,Head of Department,Managing Director');
 Route::post('/interviews', [InterviewController::class, 'store'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager');
 Route::post('/interviews/{interview}/evaluate', [InterviewController::class, 'evaluate'])->middleware(\App\Http\Middleware\StaffSession::class.':Interview Panel Member');
+Route::post('/interviews/{interview}/reopen', [InterviewController::class, 'reopen'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager');
 Route::get('/rankings', [SelectionController::class, 'rankings'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager,Managing Director');
 Route::get('/final-selections', [SelectionController::class, 'index'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager,Managing Director');
 Route::post('/final-selections', [SelectionController::class, 'nominate'])->middleware(\App\Http\Middleware\StaffSession::class.':HR Manager');

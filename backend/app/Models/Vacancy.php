@@ -21,6 +21,11 @@ class Vacancy extends Model
         return $this->belongsTo(Department::class, 'department_id', 'department_id');
     }
 
+    public function applicationForm()
+    {
+        return $this->hasOne(VacancyFormVersion::class, 'vacancy_id', 'vacancy_id')->ofMany('version', 'max');
+    }
+
     protected function casts(): array
     {
         return ['opening_date' => 'date', 'closing_date' => 'date', 'hr_approved_at' => 'datetime', 'hod_approved_at' => 'datetime', 'md_approved_at' => 'datetime'];

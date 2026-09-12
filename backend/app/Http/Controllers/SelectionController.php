@@ -11,16 +11,28 @@ class SelectionController extends Controller
 {
     public function rankings(Request $request): JsonResponse
     {
-        $rows = DB::table('applications as a')
-            ->join('candidates as c', 'c.candidate_id', '=', 'a.candidate_id')
-            ->join('vacancies as v', 'v.vacancy_id', '=', 'a.vacancy_id')
-            ->leftJoin('Department as d', 'd.department_id', '=', 'v.department_id')
-            ->join('interviews as i', 'i.application_id', '=', 'a.application_id')
-            ->join('interview_evaluations as e', 'e.interview_id', '=', 'i.interview_id')
-            ->where('a.status', 'Evaluated')
-            ->when($request->filled('vacancy_id'), fn ($q) => $q->where('a.vacancy_id', $request->integer('vacancy_id')))
-            ->select('a.application_id', 'a.vacancy_id', 'c.name as candidate_name', 'c.email', 'v.title as vacancy_title', 'v.department_id', 'd.department_name', 'e.score', 'e.recommendation', 'e.comments')
-            ->orderByDesc('e.score')->get();
+        $rows = Application::with(['candidate', 'vacancy.department', 'interview.panelEvaluations.member'])
+            ->where('status', 'Evaluated')
+            ->when($request->filled('vacancy_id'), fn ($q) => $q->where('vacancy_id', $request->integer('vacancy_id')))
+            ->where(function ($query) {
+                $query->whereHas('interview.panelEvaluations', fn ($q) => $q->where('status', 'Submitted'))
+                    ->orWhereHas('interview', fn ($q) => $q->whereExists(function ($legacy) {
+                        $legacy->selectRaw('1')->from('interview_evaluations')->whereColumn('interview_evaluations.interview_id', 'interviews.interview_id');
+                    }));
+            })
+            ->get()->map(function (Application $application) {
+                $evaluations = $application->interview->panelEvaluations->where('status', 'Submitted');
+                $legacy = $evaluations->isEmpty() ? DB::table('interview_evaluations')->where('interview_id', $application->interview->interview_id)->first() : null;
+                return (object) [
+                    'application_id' => $application->application_id, 'vacancy_id' => $application->vacancy_id,
+                    'candidate_name' => $application->candidate->name, 'email' => $application->candidate->email,
+                    'vacancy_title' => $application->vacancy->title, 'department_id' => $application->vacancy->department_id,
+                    'department_name' => $application->vacancy->department?->department_name,
+                    'score' => $legacy ? (float) $legacy->score : round($evaluations->avg('weighted_score'), 2),
+                    'recommendation' => $legacy ? $legacy->recommendation : $evaluations->groupBy('recommendation')->map->count()->map(fn ($count, $label) => "$label: $count")->implode(' · '),
+                    'comments' => $legacy ? $legacy->comments : $evaluations->map(fn ($evaluation) => $evaluation->member->name.': '.$evaluation->comments)->implode("\n"),
+                ];
+            })->sortByDesc('score');
 
         $ranked = $rows->groupBy('vacancy_id')->flatMap(function ($group) {
             return $group->values()->map(fn ($row, $index) => [
@@ -51,8 +63,8 @@ class SelectionController extends Controller
                 'v.title as vacancy_title',
                 'v.department_id',
                 'd.department_name',
-                'e.score as interview_score',
-                'e.recommendation as interview_recommendation',
+                DB::raw('COALESCE((SELECT AVG(pe.weighted_score) FROM panel_evaluations pe WHERE pe.interview_id = i.interview_id AND pe.status = \'Submitted\'), e.score) as interview_score'),
+                DB::raw("CASE WHEN EXISTS (SELECT 1 FROM panel_evaluations pe WHERE pe.interview_id = i.interview_id AND pe.status = 'Submitted') THEN 'Structured panel - see Interviews' ELSE e.recommendation END as interview_recommendation"),
                 'e.comments as interview_comments'
             )
             ->selectSub(DB::table('candidate_notifications as n')->selectRaw('COUNT(*)')->whereColumn('n.application_id', 'f.application_id')->where('n.notification_type', 'Appointment'), 'finalized_count')

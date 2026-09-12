@@ -10,6 +10,7 @@ use App\Models\Vacancy;
 use App\Services\CvProfileExtractor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -95,7 +96,7 @@ class InternalEmployeeController extends Controller
     public function vacancies(Request $request): JsonResponse
     {
         $this->employeeFromToken($request);
-        return response()->json(['vacancies' => Vacancy::with('department')
+        return response()->json(['vacancies' => Vacancy::with(['department', 'applicationForm'])
             ->where('status', 'Published')->whereIn('audience', ['Internal', 'Both'])
             ->whereDate('opening_date', '<=', now())->whereDate('closing_date', '>=', now())
             ->orderBy('closing_date')->get()]);
@@ -104,14 +105,20 @@ class InternalEmployeeController extends Controller
     public function apply(Request $request, Vacancy $vacancy, CvProfileExtractor $extractor): JsonResponse
     {
         $employee = $this->employeeFromToken($request);
-        abort_unless($vacancy->status === 'Published' && in_array($vacancy->audience, ['Internal', 'Both'], true) && $vacancy->closing_date->isFuture(), 422, 'This internal vacancy is no longer accepting applications.');
+        abort_unless($vacancy->status === 'Published' && in_array($vacancy->audience, ['Internal', 'Both'], true) && $vacancy->opening_date->startOfDay()->lte(today()) && $vacancy->closing_date->endOfDay()->gte(now()), 422, 'This internal vacancy is not accepting applications.');
         abort_if(Application::where('vacancy_id', $vacancy->vacancy_id)->where('employee_id', $employee->id)->exists(), 422, 'You have already applied for this vacancy.');
         $data = $request->validate([
             'nic' => ['required', 'string', 'max:30'], 'email' => ['required', 'email', 'max:255'],
             'address' => ['required', 'string', 'max:500'], 'cv' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:5120'],
         ]);
 
-        [$application, $document] = DB::transaction(function () use ($data, $vacancy, $request, $employee) {
+        $storedPaths = [];
+        try {
+        [$application, $document] = DB::transaction(function () use ($data, $vacancy, $request, $employee, &$storedPaths) {
+            $vacancy = Vacancy::whereKey($vacancy->vacancy_id)->lockForUpdate()->firstOrFail();
+            abort_unless($vacancy->status === 'Published' && in_array($vacancy->audience, ['Internal', 'Both'], true) && $vacancy->opening_date->startOfDay()->lte(today()) && $vacancy->closing_date->endOfDay()->gte(now()), 422, 'This vacancy is not accepting applications.');
+            $forms = app(\App\Services\VacancyApplicationForm::class);
+            $version = $forms->validate($request, $vacancy->vacancy_id);
             $candidate = Candidate::updateOrCreate(['nic' => $data['nic']], [
                 'name' => $employee->name, 'email' => $data['email'], 'phone' => $employee->phone, 'address' => $data['address'],
             ]);
@@ -121,9 +128,18 @@ class InternalEmployeeController extends Controller
                 'employee_id' => $employee->id, 'applicant_type' => 'Internal', 'submitted_at' => now(), 'status' => 'Submitted',
             ]);
             $path = $request->file('cv')->store('candidate-documents', 'local');
+            $storedPaths[] = $path;
             $document = Document::create(['application_id' => $application->application_id, 'document_type' => 'CV', 'file_name' => $request->file('cv')->getClientOriginalName(), 'file_path' => $path, 'uploaded_at' => now()]);
+            $forms->store($request, $application, $version, $storedPaths);
             return [$application, $document];
         });
+        } catch (UniqueConstraintViolationException $error) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($storedPaths);
+            abort(422, 'You have already applied for this vacancy. You may still apply for a different vacancy.');
+        } catch (\Throwable $error) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($storedPaths);
+            throw $error;
+        }
 
         $extractor->extractAndStore($application, $document);
 

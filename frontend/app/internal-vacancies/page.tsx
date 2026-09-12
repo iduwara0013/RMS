@@ -1,12 +1,14 @@
 'use client';
 
 import Image from 'next/image';
+import VacancyFormFields, { type VacancyForm } from '@/components/vacancy-form-fields';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 
 type Employee = { name: string; employee_epf: string; phone: string };
 type Department = { department_name: string };
 type Vacancy = {
+  application_form?: VacancyForm | null;
   vacancy_id: number; title: string; description: string; vacancy_type: string; vacancy_grade: 'A' | 'B' | 'C';
   audience: 'Internal' | 'Both'; closing_date: string; department?: Department;
 };
@@ -58,8 +60,8 @@ export default function InternalVacanciesPage() {
     event.preventDefault(); if (!selectedVacancy || !cv) { setMessage('Please attach your CV.'); return; }
     setBusy(true); setMessage('');
     try {
-      const body = new FormData(); Object.entries(application).forEach(([key, value]) => body.append(key, value)); body.append('cv', cv);
-      const response = await fetch(`${API}/internal/vacancies/${selectedVacancy.vacancy_id}/apply`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+      const body = new FormData(event.currentTarget); Object.entries(application).forEach(([key, value]) => body.append(key, value)); body.append('cv', cv);
+      const response = await fetch(`${API}/internal/vacancies/${selectedVacancy.vacancy_id}/apply`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, body });
       const payload = await response.json().catch(() => ({})) as ApiResponse;
       if (!response.ok) throw new Error(payload.message ?? 'Unable to submit application.');
       setMessage(`Application submitted successfully. Reference: ${payload.application_id}`); setSelectedVacancy(null); setApplication({ nic: '', email: '', address: '' }); setCv(null);
@@ -84,9 +86,9 @@ export default function InternalVacanciesPage() {
       {step === 'vacancies' && <><div className="internal-employee-bar"><div><span>Verified employee</span><strong>{employee?.name}</strong><small>EPF {employee?.employee_epf}</small></div><button className="dashboard-signout" type="button" onClick={signOut}>Sign out</button></div>
         <div className="vacancy-heading"><div><p className="eyebrow eyebrow--red">Internal opportunities</p><h2>Available vacancies</h2></div><span>{vacancies.length} positions available</span></div>
         {message && <p className="form-message form-message--success">{message}</p>}
-        <div className="vacancy-grid">{vacancies.map((vacancy) => <article className="vacancy-card" key={vacancy.vacancy_id}><div className="vacancy-card__top"><span className="vacancy-type">{vacancy.vacancy_type} · Grade {vacancy.vacancy_grade}</span><span className="vacancy-dot" /></div><h3>{vacancy.title}</h3><p>{vacancy.description}</p><div className="vacancy-card__meta"><span>{vacancy.department?.department_name ?? 'CPSTL'}</span><strong>Closes {new Date(vacancy.closing_date).toLocaleDateString('en-GB')}</strong></div><button className="vacancy-apply" type="button" onClick={() => setSelectedVacancy(vacancy)}>Apply now <span>→</span></button></article>)}</div>
+        <div className="vacancy-grid">{vacancies.map((vacancy) => <article className="vacancy-card" key={vacancy.vacancy_id}><div className="vacancy-card__top"><span className="vacancy-type">{vacancy.vacancy_type} · Grade {vacancy.vacancy_grade}</span><span className="vacancy-dot" /></div><h3>{vacancy.title}</h3><p>{vacancy.description}</p><div className="vacancy-card__meta"><span>{vacancy.department?.department_name ?? 'CPSTL'}</span><strong>Closes {new Date(vacancy.closing_date).toLocaleDateString('en-GB')}</strong></div><button className="vacancy-apply" type="button" disabled={busy} onClick={() => { setSelectedVacancy(vacancy); setCv(null); setMessage(''); }}>Apply now <span>→</span></button></article>)}</div>
         {vacancies.length === 0 && <div className="vacancy-empty">There are no published internal vacancies at the moment.</div>}
-        {selectedVacancy && <form className="application-form internal-application" onSubmit={apply}><div><p className="eyebrow eyebrow--red">Internal application</p><h2>{selectedVacancy.title}</h2></div><input required placeholder="NIC number" value={application.nic} onChange={(event) => setApplication({ ...application, nic: event.target.value })} /><input required type="email" placeholder="Contact email" value={application.email} onChange={(event) => setApplication({ ...application, email: event.target.value })} /><textarea required placeholder="Home address" value={application.address} onChange={(event) => setApplication({ ...application, address: event.target.value })} /><label className="cv-upload">CV (PDF, DOC or DOCX)<input required type="file" accept=".pdf,.doc,.docx" onChange={(event) => setCv(event.target.files?.[0] ?? null)} /></label><button className="vacancy-apply" type="submit" disabled={busy}>Submit internal application <span>→</span></button><button className="secondary-button" type="button" onClick={() => setSelectedVacancy(null)}>Cancel</button></form>}
+        {selectedVacancy && <form key={selectedVacancy.vacancy_id} className="application-form internal-application" onSubmit={apply}><div><p className="eyebrow eyebrow--red">Internal application</p><h2>{selectedVacancy.title}</h2></div><input required placeholder="NIC number" value={application.nic} onChange={(event) => setApplication({ ...application, nic: event.target.value })} /><input required type="email" placeholder="Contact email" value={application.email} onChange={(event) => setApplication({ ...application, email: event.target.value })} /><textarea required placeholder="Home address" value={application.address} onChange={(event) => setApplication({ ...application, address: event.target.value })} /><label className="cv-upload">CV (PDF, DOC or DOCX)<input required type="file" accept=".pdf,.doc,.docx" onChange={(event) => setCv(event.target.files?.[0] ?? null)} /></label><VacancyFormFields form={selectedVacancy.application_form} /><button className="vacancy-apply" type="submit" disabled={busy}>Submit internal application <span>→</span></button><button className="secondary-button" type="button" onClick={() => setSelectedVacancy(null)}>Cancel</button></form>}
       </>}
     </section><footer className="public-footer">© {new Date().getFullYear()} CPSTL · Internal Careers Portal</footer></main>;
 }

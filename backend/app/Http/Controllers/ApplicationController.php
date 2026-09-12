@@ -10,6 +10,7 @@ use App\Services\CvProfileExtractor;
 use App\Support\StaffAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -27,13 +28,29 @@ class ApplicationController extends Controller
         $data = $request->validate(['nic' => ['required', 'string', 'max:30'], 'name' => ['required', 'string', 'max:255'], 'email' => ['required', 'email', 'max:255'], 'phone' => ['required', 'string', 'max:30'], 'address' => ['required', 'string', 'max:500'], 'cv' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:5120']]);
         $candidate = Candidate::where('nic', $data['nic'])->first();
         abort_if($candidate && Application::where('vacancy_id', $vacancy->vacancy_id)->where('candidate_id', $candidate->candidate_id)->exists(), 422, 'An application already exists for this candidate and vacancy.');
-        [$application, $document] = DB::transaction(function () use ($data, $vacancy, $request) {
+        $storedPaths = [];
+        try {
+        [$application, $document] = DB::transaction(function () use ($data, $vacancy, $request, &$storedPaths) {
+            $vacancy = Vacancy::whereKey($vacancy->vacancy_id)->lockForUpdate()->firstOrFail();
+            abort_unless($vacancy->status === 'Published' && in_array($vacancy->audience, ['External', 'Both'], true) && $vacancy->opening_date->startOfDay()->lte(today()) && $vacancy->closing_date->endOfDay()->gte(now()), 422, 'This vacancy is not accepting applications.');
+            $forms = app(\App\Services\VacancyApplicationForm::class);
+            $version = $forms->validate($request, $vacancy->vacancy_id);
             $candidate = Candidate::updateOrCreate(['nic' => $data['nic']], collect($data)->only(['nic', 'name', 'email', 'phone', 'address'])->all());
+            abort_if(Application::where('vacancy_id', $vacancy->vacancy_id)->where('candidate_id', $candidate->candidate_id)->exists(), 422, 'An application already exists for this candidate and vacancy.');
             $application = Application::create(['candidate_id' => $candidate->candidate_id, 'vacancy_id' => $vacancy->vacancy_id, 'applicant_type' => 'External', 'submitted_at' => now(), 'status' => 'Submitted']);
             $path = $request->file('cv')->store('candidate-documents', 'local');
+            $storedPaths[] = $path;
             $document = Document::create(['application_id' => $application->application_id, 'document_type' => 'CV', 'file_name' => $request->file('cv')->getClientOriginalName(), 'file_path' => $path, 'uploaded_at' => now()]);
+            $forms->store($request, $application, $version, $storedPaths);
             return [$application, $document];
         });
+        } catch (UniqueConstraintViolationException $error) {
+            Storage::disk('local')->delete($storedPaths);
+            abort(422, 'You have already applied for this vacancy. You may still apply for a different vacancy.');
+        } catch (\Throwable $error) {
+            Storage::disk('local')->delete($storedPaths);
+            throw $error;
+        }
         $extractor->extractAndStore($application, $document);
         return response()->json(['message' => 'Application submitted successfully.', 'application_id' => $application->application_id], 201);
     }
@@ -46,6 +63,7 @@ class ApplicationController extends Controller
         $query = Application::with([
             'candidate',
             'vacancy.department',
+            'formSubmission.formVersion',
             'documents' => fn ($documents) => $documents->select(['document_id', 'application_id', 'document_type', 'file_name', 'uploaded_at']),
         ])->latest('submitted_at');
         if ($user->roles->contains('role_name', 'Head of Department')) {

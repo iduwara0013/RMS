@@ -5,6 +5,7 @@ import { staffFetch as fetch, signOutStaff } from '@/lib/staff-fetch';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardNavigation from '@/components/dashboard-navigation';
+import { type VacancyForm } from '@/components/vacancy-form-fields';
 import DateRangeFilter, { matchesDateRange } from '@/components/date-range-filter';
 import { useRmsUser } from '@/lib/use-rms-user';
 
@@ -28,18 +29,20 @@ type CvProfile = {
 };
 type Application = {
   application_id: number;
+  duplicate_of_application_id?: number | null;
   status: string;
   submitted_at: string;
   applicant_type?: string;
   candidate: { name: string; nic: string; email: string; phone: string; address?: string };
   vacancy: { title: string; vacancy_grade?: string; audience?: string; department?: { department_name: string } | null };
   documents?: CandidateDocument[];
+  form_submission?: { answers: Record<string, string | number | null | { document_id: number; file_name: string }>; form_version: VacancyForm } | null;
 };
 type ApiMessage = { message?: string };
 type ApplicationStage = 'ongoing' | 'finished';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000/api';
-const FINISHED_APPLICATION_STATUSES = new Set(['Rejected', 'Selected', 'Not Selected']);
+const FINISHED_APPLICATION_STATUSES = new Set(['Rejected', 'Selected', 'Not Selected', 'Duplicate']);
 
 export default function ApplicationsPage() {
   const router = useRouter();
@@ -153,16 +156,17 @@ export default function ApplicationsPage() {
   }), [applications]);
   const visibleApplications = useMemo(() => categorizedApplications[stage].filter((application) => matchesDateRange(application.submitted_at, fromDate, toDate)), [categorizedApplications, fromDate, stage, toDate]);
   const departmentNames = useMemo(() => Array.from(new Set(visibleApplications.map((application) => application.vacancy.department?.department_name ?? 'Unassigned department'))).sort(), [visibleApplications]);
+  const displayedApplications = useMemo(() => departmentFilter === 'All departments'
+    ? visibleApplications
+    : visibleApplications.filter((application) => (application.vacancy.department?.department_name ?? 'Unassigned department') === departmentFilter), [departmentFilter, visibleApplications]);
+  const displayedCandidateCount = useMemo(() => new Set(displayedApplications.map((application) => application.candidate.nic)).size, [displayedApplications]);
   const groupedApplications = useMemo(() => {
-    const visible = departmentFilter === 'All departments'
-      ? visibleApplications
-      : visibleApplications.filter((application) => (application.vacancy.department?.department_name ?? 'Unassigned department') === departmentFilter);
-    return Object.entries(visible.reduce<Record<string, Application[]>>((groups, application) => {
+    return Object.entries(displayedApplications.reduce<Record<string, Application[]>>((groups, application) => {
       const department = application.vacancy.department?.department_name ?? 'Unassigned department';
       (groups[department] ??= []).push(application);
       return groups;
     }, {})).sort(([left], [right]) => left.localeCompare(right));
-  }, [visibleApplications, departmentFilter]);
+  }, [displayedApplications]);
 
   if (!user) return <main className="dashboard-loading">Loading applications…</main>;
 
@@ -193,15 +197,15 @@ export default function ApplicationsPage() {
             </div>
             <DateRangeFilter fromDate={fromDate} toDate={toDate} dateLabel="submission date" onFromDateChange={setFromDate} onToDateChange={setToDate} />
             <div className="application-toolbar">
-              <div><strong>{visibleApplications.length}</strong><span>{stage === 'ongoing' ? 'Ongoing applications' : 'Finished applications'}</span><small>Across {departmentNames.length} department{departmentNames.length === 1 ? '' : 's'}</small></div>
+              <div><strong>{displayedApplications.length}</strong><span>{stage === 'ongoing' ? 'Ongoing applications' : 'Finished applications'}</span><small>{displayedCandidateCount} unique candidate{displayedCandidateCount === 1 ? '' : 's'} · Across {departmentNames.length} department{departmentNames.length === 1 ? '' : 's'}</small></div>
               <label><span>Filter by department</span><select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}><option>All departments</option>{departmentNames.map((department) => <option key={department}>{department}</option>)}</select></label>
             </div>
             <div className="department-groups">{groupedApplications.map(([department, departmentApplications]) => <section className="department-group" key={department}>
-              <header className="department-group__header"><div className="department-group__icon" aria-hidden="true">▦</div><div><h3>{department}</h3><p>{departmentApplications.length} application{departmentApplications.length === 1 ? '' : 's'}</p></div><span>{departmentApplications.length}</span></header>
+              <header className="department-group__header"><div className="department-group__icon" aria-hidden="true">▦</div><div><h3>{department}</h3><p>{departmentApplications.length} application{departmentApplications.length === 1 ? '' : 's'} · {new Set(departmentApplications.map((application) => application.candidate.nic)).size} unique candidate{new Set(departmentApplications.map((application) => application.candidate.nic)).size === 1 ? '' : 's'}</p></div><span>{departmentApplications.length}</span></header>
               <div className="applications-list">{departmentApplications.map((application) => {
                 return <article className="application-row" key={application.application_id}>
                   <div className="application-avatar">{application.candidate.name.charAt(0)}</div>
-                  <div className="application-info"><div className="application-row__heading"><button className="candidate-name-button" type="button" onClick={() => void openCandidateProfile(application)} aria-label={`View details for ${application.candidate.name}`}>{application.candidate.name}</button><span className="workflow-status">{application.status}</span></div><p>Application #{application.application_id} · {application.vacancy.title} · {application.candidate.nic}</p><small>{application.candidate.email} · {application.candidate.phone}</small></div>
+                  <div className="application-info"><div className="application-row__heading"><button className="candidate-name-button" type="button" onClick={() => void openCandidateProfile(application)} aria-label={`View details for ${application.candidate.name}`}>{application.candidate.name}</button><span className="workflow-status">{application.status}</span></div><p>Application #{application.application_id} · {application.vacancy.title} · {application.candidate.nic}</p><small>{application.status === 'Duplicate' && application.duplicate_of_application_id ? `Duplicate of Application #${application.duplicate_of_application_id} · ` : ''}{application.candidate.email} · {application.candidate.phone}</small></div>
                   <div className="application-actions">
                     {user.roles.includes('HR Manager') && application.status === 'Submitted' && <><button onClick={() => updateStatus(application.application_id, 'Verified')}>Verify</button><button className="application-actions__secondary" onClick={() => updateStatus(application.application_id, 'Rejected')}>Reject</button></>}
                     {user.roles.includes('HR Manager') && application.status === 'Verified' && <button onClick={() => updateStatus(application.application_id, 'Shortlisted')}>Shortlist</button>}
@@ -210,7 +214,7 @@ export default function ApplicationsPage() {
               })}</div>
             </section>)}</div>
             {visibleApplications.length === 0 && <div className="vacancy-empty">{fromDate || toDate ? `No ${stage} applications match the selected submission-date range.` : stage === 'ongoing' ? 'No applications are currently being processed.' : 'No applications have reached a final outcome yet.'}</div>}
-            {visibleApplications.length > 0 && groupedApplications.length === 0 && <div className="vacancy-empty">No {stage} applications are available for the selected department.</div>}
+            {visibleApplications.length > 0 && displayedApplications.length === 0 && <div className="vacancy-empty">No {stage} applications are available for the selected department.</div>}
           </div>
         </section>
         {selectedApplication && (() => {
@@ -239,6 +243,11 @@ export default function ApplicationsPage() {
                 <section className="candidate-modal__section"><div className="candidate-modal__section-heading"><span aria-hidden="true">●</span><div><h3>Personal information</h3><p>Candidate contact and identification details</p></div></div><dl className="candidate-detail-grid"><div><dt>NIC number</dt><dd>{selectedApplication.candidate.nic}</dd></div><div><dt>Phone number</dt><dd><a href={`tel:${selectedApplication.candidate.phone}`}>{selectedApplication.candidate.phone}</a></dd></div><div><dt>Email address</dt><dd><a href={`mailto:${selectedApplication.candidate.email}`}>{selectedApplication.candidate.email}</a></dd></div><div><dt>Address</dt><dd>{selectedApplication.candidate.address || 'Not provided'}</dd></div></dl></section>
                 <section className="candidate-modal__section"><div className="candidate-modal__section-heading"><span aria-hidden="true">◆</span><div><h3>Application information</h3><p>Position and recruitment classification</p></div></div><dl className="candidate-detail-grid"><div><dt>Vacancy</dt><dd>{selectedApplication.vacancy.title}</dd></div><div><dt>Department</dt><dd>{selectedApplication.vacancy.department?.department_name ?? 'Unassigned'}</dd></div><div><dt>Candidate type</dt><dd>{selectedApplication.applicant_type ?? selectedApplication.vacancy.audience ?? 'External'}</dd></div><div><dt>Vacancy grade</dt><dd>{selectedApplication.vacancy.vacancy_grade ? `Grade ${selectedApplication.vacancy.vacancy_grade}` : 'Not specified'}</dd></div></dl></section>
                 <section className="candidate-modal__section candidate-modal__document"><div className="candidate-modal__section-heading"><span aria-hidden="true">▤</span><div><h3>Original CV</h3><p>Use the original document whenever you need to confirm a detail</p></div></div>{cv ? <div className="candidate-document-card"><div className="candidate-document-card__icon">{cv.file_name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'DOC'}</div><div><strong>{cv.file_name}</strong><span>Uploaded {new Date(cv.uploaded_at).toLocaleDateString('en-GB')}</span></div>{canAccessCv && <div className="candidate-document-card__actions"><button type="button" onClick={() => void accessCv(selectedApplication.application_id, cv, false)}>Open original</button><button type="button" className="candidate-document-card__download" onClick={() => void accessCv(selectedApplication.application_id, cv, true)}>Download</button></div>}</div> : <p className="candidate-document-empty">No CV is attached to this application.</p>}</section>
+                {canAccessCv && <section className="candidate-modal__section"><h3>Application answers</h3>{selectedApplication.form_submission ? <><p>{selectedApplication.form_submission.form_version.title} · Version {selectedApplication.form_submission.form_version.version} submitted by this candidate</p><dl className="candidate-form-answers">{selectedApplication.form_submission.form_version.questions.map(question => {
+                  const answer = selectedApplication.form_submission?.answers[question.id];
+                  const file = answer && typeof answer === 'object' ? selectedApplication.documents?.find(document => String(document.document_id) === String(answer.document_id)) : null;
+                  return <div key={question.id}><dt>{question.label}</dt><dd>{answer && typeof answer === 'object' ? <>{answer.file_name}{file && <button type="button" onClick={() => void accessCv(selectedApplication.application_id, file, true)}>Download document</button>}</> : answer === null || answer === undefined || answer === '' ? 'Not provided' : String(answer)}</dd></div>;
+                })}</dl></> : <p>This application used the standard contact-details and CV form. No additional answers were recorded.</p>}</section>}
                 {canAccessCv && <section className="candidate-modal__section candidate-cv-profile"><div className="candidate-modal__section-heading"><span aria-hidden="true">✦</span><div><h3>CV overview</h3><p>A quick summary to help review this application</p></div></div>
                   {cvProfileLoading ? <div className="candidate-cv-loading"><span /><span /><span /></div> : cvProfileError ? <div className="candidate-cv-state candidate-cv-state--error"><strong>CV details unavailable</strong><p>{cvProfileError}</p></div> : selectedCvProfile ? <>
                     <div className={`candidate-cv-state candidate-cv-state--${selectedCvProfile.parse_status === 'Parsed' ? 'parsed' : 'review'}`}><div><strong>{selectedCvProfile.parse_status === 'Parsed' ? 'Summary ready for HR review' : 'Manual review recommended'}</strong><p>{selectedCvProfile.parse_status === 'Parsed' ? 'Important details are arranged below. Confirm them against the original CV before making a decision.' : selectedCvProfile.parse_message}</p></div>{confidence !== null && <div className="candidate-cv-confidence" aria-label={`Extraction confidence ${confidence}%`}><strong>{confidence}%</strong><span>Confidence</span></div>}</div>
